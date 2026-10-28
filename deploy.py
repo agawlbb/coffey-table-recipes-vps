@@ -1,5 +1,6 @@
 """Copy this service to the VPS and restart it. No cPanel access."""
 from pathlib import Path
+import json
 import shutil
 import subprocess
 
@@ -10,6 +11,18 @@ CODE = HOME / 'code'
 
 def run(*args):
     subprocess.run(args, cwd=ROOT, check=True)
+
+
+def verify_cpu_policy():
+    settings = json.loads(subprocess.check_output(
+        ['sudo', '-n', 'docker', 'inspect', 'ctr-backend',
+         '--format', '{{json .HostConfig}}'], text=True))
+    cpu_max = subprocess.check_output(
+        ['sudo', '-n', 'docker', 'exec', 'ctr-backend',
+         'cat', '/sys/fs/cgroup/cpu.max'], text=True).strip()
+    if settings['CpuShares'] != 1024 or cpu_max.split()[0] != 'max':
+        raise RuntimeError('VPS CPU policy requires CpuShares=1024 and unlimited cpu.max')
+    print('CPU policy verified: CpuShares=1024; cpu.max=' + cpu_max)
 
 
 def deploy():
@@ -40,6 +53,7 @@ def deploy():
     run('sudo', '-n', 'docker', 'compose', '-f', str(HOME / 'compose.yaml'),
         'exec', '-T', 'backend', 'php', '-r',
         "$s=@fsockopen('127.0.0.1',8080);exit($s===false?1:0);")
+    verify_cpu_policy()
     print('VPS source copied; backend restarted and listening.')
 
 

@@ -26,6 +26,9 @@ and restarts the one `ctr-backend` container. No cPanel credential is used.
 Credentials remain in `/opt/services/ctr-backend/private/`, and persistent state
 in `/opt/services/ctr-backend/state/`. Both are outside Git and are preserved.
 Routine source changes do not rebuild the runtime image or run schema/import jobs.
+Production uses CPU shares 1024 with no hard CPU quota, allowing idle CPU use.
+Deployment verifies Docker CpuShares and effective cgroup cpu.max after restart.
+Keep memory/swap, process, security and restart settings unchanged.
 
 Docker/Compose, the existing Caddy route, private database/Firebase configuration
 and locked Composer dependencies are setup prerequisites. Runtime image changes

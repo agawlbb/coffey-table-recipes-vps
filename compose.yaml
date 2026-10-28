@@ -6,7 +6,7 @@ services:
     image: ctr-backend:latest
     command: [php, server.php, start]
     restart: unless-stopped
-    cpus: 0.5
+    cpu_shares: 1024
     mem_limit: 256m
     pids_limit: 100
     security_opt: [no-new-privileges:true]

@@ -38,3 +38,18 @@ branch. The public authenticated read passed. The first open-connection revocati
 check failed without a detailed response; an immediate repeat passed both read
 and revocation. No shopping items were modified by these checks, and temporary
 credentials were revoked. No app packages were built or installed.
+
+## Shared CPU policy retained through deployment
+
+Updated source Compose from `cpus: 0.5` to `cpu_shares: 1024`, matching
+`vps_admin` work commit `9463376` and the corrected installed configuration.
+There is no separate runtime generator: deploy.py installs this source file.
+Deployment now checks Docker CpuShares and effective cgroup cpu.max after restart.
+
+All three deployment tests passed, including rejection of incorrect shares and a
+hard effective quota. Resolved Compose contained no cpus, cpu_quota or CPU limit
+under deploy.resources. Ran the corrected deployment and verified CpuShares=1024,
+NanoCpus=0, CpuQuota=0 and cpu.max=`max 100000`. Installed Compose matched source.
+A pre/post snapshot confirmed unchanged memory, swap/reservation/swappiness,
+process, security, capability, root-filesystem, OOM and restart settings. No
+image build, app build, schema/data change or changes to other services occurred.

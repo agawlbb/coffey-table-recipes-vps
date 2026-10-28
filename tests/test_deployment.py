@@ -28,8 +28,11 @@ class DeploymentTests(unittest.TestCase):
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_text('keep')
             with patch.object(deploy, 'ROOT', source), patch.object(deploy, 'HOME', home), \
-                 patch.object(deploy, 'CODE', code), patch.object(deploy, 'run') as run:
+                 patch.object(deploy, 'CODE', code), patch.object(deploy, 'run') as run, \
+                 patch.object(deploy, 'verify_cpu_policy') as verify_cpu:
+
                 deploy.deploy()
+                verify_cpu.assert_called_once_with()
             self.assertEqual((home / 'state/pending.json').read_text(), 'keep')
             self.assertEqual((home / 'private/database.json').read_text(), 'keep')
             self.assertFalse((code / 'obsolete.php').exists())
@@ -39,6 +42,21 @@ class DeploymentTests(unittest.TestCase):
             self.assertFalse(any('cpanel' in str(call).lower() for call in commands))
             self.assertLess(next(i for i, c in enumerate(commands) if 'stop' in c),
                             next(i for i, c in enumerate(commands) if 'up' in c))
+
+    def test_effective_cpu_policy_accepts_shares_and_rejects_hard_quota(self):
+        for shares, cpu_max, valid in (
+            (1024, 'max 100000', True),
+            (128, 'max 100000', False),
+            (1024, '50000 100000', False),
+        ):
+            with self.subTest(shares=shares, cpu_max=cpu_max), \
+                 patch.object(deploy.subprocess, 'check_output', side_effect=[
+                     '{"CpuShares":' + str(shares) + '}', cpu_max]):
+                if valid:
+                    deploy.verify_cpu_policy()
+                else:
+                    with self.assertRaisesRegex(RuntimeError, 'CPU policy'):
+                        deploy.verify_cpu_policy()
 
     def test_missing_dependencies_stops_before_changing_deployment(self):
         with tempfile.TemporaryDirectory() as directory:

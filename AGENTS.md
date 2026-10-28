@@ -48,3 +48,12 @@ adding complexity. Stay within the requested behavior; no unsolicited features.
 
 - Child mode for shopping is enforced by hiding app editing controls. Do not add
   server-side child-mode restrictions or an inMotion HTTP policy dependency.
+
+## VPS CPU policy
+
+Production uses `cpu_shares: 1024`; shared development uses `cpu_shares: 128`.
+Do not set `cpus`, `cpu_quota` or `deploy.resources.limits.cpus` hard caps.
+Preserve existing memory, swap, process, security and restart settings. Deployment
+must retain the policy in its installed Compose configuration and verify
+`CpuShares=1024` and effective `/sys/fs/cgroup/cpu.max` beginning with `max`.
+The VPS reference is `agawlbb/vps_admin`, branch `work`, commit `9463376`.
