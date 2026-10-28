@@ -4,7 +4,7 @@ declare(strict_types=1);
 /** Transport-independent shopping protocol. Every operation rechecks access. */
 final class ShoppingSocket
 {
-    public function __construct(private PDO $pdo, private Closure $verify, private Closure $childGuard,
+    public function __construct(private PDO $pdo, private Closure $verify,
         private HomeAssistantConnections $connections, private ShoppingSyncRequests $requests) {}
 
     public function authenticate(string $token, ?string $household): array
@@ -30,20 +30,19 @@ final class ShoppingSocket
     public function handle(string $token, string $household, string $path, ?array $body): array
     {
         $actor = $this->authenticate($token, $household);
-        return $this->perform($actor,$path,$body,$token);
+        return $this->perform($actor,$path,$body);
     }
 
     public function snapshot(array $actor): array
     {
-        return $this->perform($actor,'/households/'.$actor['household'].'/shopping-list',null,'');
+        return $this->perform($actor,'/households/'.$actor['household'].'/shopping-list',null);
     }
 
-    private function perform(array $actor,string $path,?array $body,string $token): array
+    private function perform(array $actor,string $path,?array $body): array
     {
         $household=$actor['household'];
         $root = '/households/'.$household.'/shopping-list';
         if (!in_array($path, [$root, $root.'/sync-request'], true)) throw new HttpError(404, 'not_found', 'Shopping endpoint not found.');
-        if ($body !== null && !$actor['ha']) ($this->childGuard)($token);
         if ($path === $root.'/sync-request') {
             if ($body === null || $actor['ha']) throw new HttpError(403, 'permission_denied', 'Unsupported operation.');
             $state = $this->requests->request($household);

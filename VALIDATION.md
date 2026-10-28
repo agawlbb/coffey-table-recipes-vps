@@ -18,3 +18,16 @@ Verified using the existing shared development environment:
 Wire/transaction tests use disposable SQLite. No hosted shopping data, running
 VPS service, inMotion files, app packages or installed HA integration were changed
 for this repository extraction. There are no push-triggered deployment workflows.
+
+## Shopping write repair
+
+The owner requested app-only child-mode enforcement. Removed the server-side
+policy callback and its HTTPS request to inMotion, which timed out and caused
+503 responses on otherwise authenticated shopping writes. Firebase validation,
+household membership, disabled-account checks, credential revocation and receipt
+handling remain enforced. No schema or data migration is needed.
+
+Verified 21 signed identity checks, socket access/receipt/revocation and HA
+credential fixtures, all three real WebSocket tests (including the actual HA
+client), two deployment-preservation tests, and changed PHP syntax. The source
+branch starts at `a7f9c260990d8dc74cbd1f1c2aae53963d28427a`.

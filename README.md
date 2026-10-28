@@ -9,7 +9,9 @@ branch `migration-take-2`. The database stays on inMotion.
 `server.php` runs the service; `src/` contains its code. Firebase ID tokens
 authenticate app users. HA credentials are checked against the existing shared
 SQL table, including revocation. Clients keep local data and a durable outbox.
-Existing child-mode policy remains on the account backend.
+Child mode hides editing controls in the app. Shopping writes do not make a
+server-side child-mode policy call. Firebase authentication and household access
+checks remain enforced by this service.
 
 ## Deployment
 

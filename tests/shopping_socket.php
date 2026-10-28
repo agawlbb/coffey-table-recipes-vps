@@ -19,14 +19,11 @@ INSERT INTO users VALUES(1,'alice',0),(2,'bob',0),(3,'disabled',1);
 INSERT INTO household_memberships VALUES(1,1,'owner'),(2,2,'owner');");
 $dir=sys_get_temp_dir().'/ctr-socket-'.bin2hex(random_bytes(8));
 $connections=new HomeAssistantConnections($db);
-$locked=false;
 $verifications=0;
 $socket=new ShoppingSocket($db, static function(string $token) use (&$verifications): array {
     $verifications++;
     if (!in_array($token,['alice','bob','disabled'],true)) throw new HttpError(401,'invalid_token','Invalid.');
     return ['uid'=>$token];
-}, static function(string $token) use (&$locked): void {
-    if ($locked) throw new HttpError(403,'child_mode','Read only.');
 },$connections,new ShoppingSyncRequests($dir));
 function checkSocket(bool $ok): void { if (!$ok) throw new RuntimeException('Socket assertion failed.'); }
 function rejectSocket(callable $call,int $status): void {
@@ -48,11 +45,8 @@ try {
     $saved=$socket->handle('alice','1',$path,$body);
     checkSocket($saved['acknowledged_change_id']==='change1' && count($saved['items'])===1);
     checkSocket($socket->handle('alice','1',$path,$body)['revision']===$saved['revision']);
-    $locked=true;
-    rejectSocket(fn()=>$socket->handle('alice','1',$path,$body),403);
     checkSocket(count($socket->handle('alice','1',$path,null)['items'])===1);
-    $locked=false;
-    $connection=$connections->create('1');$token=$connection['token'];
+        $connection=$connections->create('1');$token=$connection['token'];
     checkSocket($socket->authenticate($token,null)['household']==='1');
     rejectSocket(fn()=>$socket->authenticate($token,'2'),404);
     rejectSocket(fn()=>$socket->handle($token,'1',$path,['departments'=>[]]),422);
@@ -75,7 +69,7 @@ try {
     checkSocket($socket->handle('alice','1',$path,$config)['departments']===['Farm stand']);
     $db->exec('DELETE FROM household_memberships WHERE user_id=1');
     rejectSocket(fn()=>$socket->handle('alice','1',$path,null),404);
-    echo "Socket identity, isolation, receipts, policy and shared HA revocation passed\n";
+    echo "Socket identity, isolation, receipts and shared HA revocation passed\n";
 } finally {
     foreach(glob($dir.'/*') ?: [] as $file) unlink($file);
     if(is_dir($dir)) rmdir($dir);

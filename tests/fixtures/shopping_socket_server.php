@@ -23,5 +23,5 @@ $q->execute([hash('sha256','ctrha_'.str_repeat('a',64)),1,gmdate('Y-m-d H:i:s')]
 $factory=static fn(): ShoppingSocket => new ShoppingSocket($db, static function(string $token): array {
     if (!in_array($token,['alice','bob'],true)) throw new HttpError(401,'invalid_token','Invalid token.');
     return ['uid'=>$token];
-}, static function(string $token): void {},new HomeAssistantConnections($db),new ShoppingSyncRequests($file.'-requests'));
+},new HomeAssistantConnections($db),new ShoppingSyncRequests($file.'-requests'));
 require_once dirname(__DIR__, 2).'/server.php';

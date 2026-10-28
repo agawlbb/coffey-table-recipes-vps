@@ -28,17 +28,7 @@ $factory ??= static function (bool $reset=false): ?ShoppingSocket {
         'user'=>$db['username'],'password'=>$db['password'],'tls'=>$db['tls']??true,
         'ca_file'=>$db['ca_file']??'/etc/ssl/certs/ca-certificates.crt']);
     $verify = static fn(string $token): array => (new FirebaseIdentity($firebase['firebase_project_id'], 'firebasePublicKeys'))->verify($token);
-    // Child-mode policy remains owned by the account backend on inMotion.
-    // Fail closed if it cannot be consulted; never silently bypass that policy.
-    $guard = static function (string $token): void {
-        $curl = curl_init('https://coffeybean.com/CoffeyTableRecipes/api/v1/me/child-mode');
-        curl_setopt_array($curl, [CURLOPT_HTTPHEADER=>['Authorization: Bearer '.$token], CURLOPT_RETURNTRANSFER=>true, CURLOPT_CONNECTTIMEOUT=>5, CURLOPT_TIMEOUT=>10]);
-        $body = curl_exec($curl); $status = curl_getinfo($curl, CURLINFO_HTTP_CODE); curl_close($curl);
-        $state = is_string($body) ? json_decode($body, true) : null;
-        if ($status !== 200 || !is_bool($state['enabled'] ?? null)) throw new HttpError(503, 'policy_unavailable', 'Account policy temporarily unavailable.');
-        if ($state['enabled']) throw new HttpError(403, 'child_mode', 'Child mode allows viewing only.');
-    };
-    return $service=new ShoppingSocket($pdo, $verify, $guard, new HomeAssistantConnections($pdo), new ShoppingSyncRequests(CTR_STORAGE.'/shopping-sync-requests'));
+    return $service=new ShoppingSocket($pdo, $verify, new HomeAssistantConnections($pdo), new ShoppingSyncRequests(CTR_STORAGE.'/shopping-sync-requests'));
 };
 $send = static fn(TcpConnection $c, array $message) => $c->send(json_encode($message + ['server_time_ms'=>(int)(microtime(true)*1000)], JSON_THROW_ON_ERROR));
 $broadcast = static function (string $household, array $data) use (&$clients, $factory, $send): void {

@@ -45,3 +45,6 @@ adding complexity. Stay within the requested behavior; no unsolicited features.
 - Schema changes and credential imports are explicit setup/maintenance actions,
   never recurring deployment steps. Preserve SQL transactions and replay receipts.
 - This repository does not build or publish the app or install the HA integration.
+
+- Child mode for shopping is enforced by hiding app editing controls. Do not add
+  server-side child-mode restrictions or an inMotion HTTP policy dependency.
