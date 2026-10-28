@@ -31,3 +31,10 @@ Verified 21 signed identity checks, socket access/receipt/revocation and HA
 credential fixtures, all three real WebSocket tests (including the actual HA
 client), two deployment-preservation tests, and changed PHP syntax. The source
 branch starts at `a7f9c260990d8dc74cbd1f1c2aae53963d28427a`.
+
+Deployed the repair through `python3 deploy.py`. The running container uses
+`php server.php start`; its bootstrap, server and all runtime classes match this
+branch. The public authenticated read passed. The first open-connection revocation
+check failed without a detailed response; an immediate repeat passed both read
+and revocation. No shopping items were modified by these checks, and temporary
+credentials were revoked. No app packages were built or installed.
