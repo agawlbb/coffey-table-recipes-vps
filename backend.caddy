@@ -1,0 +1,10 @@
+# Install in /opt/vps/caddy/conf/sites/ only at approved service deployment.
+# Caddy terminates TLS and handles the WebSocket Upgrade automatically.
+ctr.coffeybean.com {
+	handle /shopping {
+		reverse_proxy ctr-backend:8080
+	}
+	handle {
+		respond 404
+	}
+}

@@ -1,0 +1,13 @@
+/vendor/
+/.venv/
+/storage/
+/private/
+__pycache__/
+*.pyc
+*.local.json
+*.local.php
+/database.json
+/firebase.json
+.env
+*.pem
+*.key

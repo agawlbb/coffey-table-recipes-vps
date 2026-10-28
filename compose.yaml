@@ -1,0 +1,28 @@
+# VPS backend service; currently handles shopping synchronization.
+name: ctr-backend
+services:
+  backend:
+    container_name: ctr-backend
+    image: ctr-backend:latest
+    command: [php, server.php, start]
+    restart: unless-stopped
+    cpus: 0.5
+    mem_limit: 256m
+    pids_limit: 100
+    security_opt: [no-new-privileges:true]
+    ports: ["127.0.0.1:8088:8080"]
+    networks:
+      proxy:
+        aliases: [ctr-backend]
+    environment:
+      CTR_STORAGE: /state
+    volumes:
+      - /opt/services/ctr-backend/code:/app:ro
+      - /opt/services/ctr-backend/private:/run/ctr-private:ro
+      - /opt/services/ctr-backend/state:/state
+    logging:
+      driver: json-file
+      options: {max-size: 5m, max-file: '2'}
+networks:
+  proxy:
+    external: true

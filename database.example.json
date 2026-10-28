@@ -1,0 +1,9 @@
+{
+  "host": "",
+  "port": 3306,
+  "database": "",
+  "username": "",
+  "password": "",
+  "tls": false,
+  "ca_file": "/etc/ssl/certs/ca-certificates.crt"
+}
