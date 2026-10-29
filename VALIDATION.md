@@ -93,3 +93,28 @@ signup or cPanel credential was moved.
 No service restart, hosted endpoint removal, app build or installation was
 performed. No production data was used for development tests. These matching
 `backend_migration` branches remain unmerged for review.
+
+## Branch deployment — 2026-10-29
+
+At the owner’s explicit request, deployed `backend_migration` runtime commit
+`f3056931e90ead6ca6b91a5ffad1daca89916863` using the existing `python3 deploy.py`.
+The app and InMotion branches were neither merged nor deployed.
+
+- The existing backend restarted successfully with zero restarts afterward;
+  Caddy reloaded the branch’s WebSocket and persistent-photo routes.
+- Installed bootstrap, server, all runtime PHP classes, Composer lock, Compose
+  and Caddy site matched the selected source. CPU shares are 1024 and effective
+  `cpu.max` is `max 100000`; no image build or database migration occurred.
+- Live public TLS WebSocket shopping authentication/read and open-connection HA
+  credential revocation passed. The temporary verification credential was revoked;
+  no shopping items were edited.
+- An existing public recipe’s detail and steps were read successfully through the
+  new public WebSocket scope. Recipe contents and credentials were not printed.
+  A missing recipe and an invalid media filename returned the expected errors.
+- The deployed timer sender passed OAuth and FCM validate-only authorization;
+  no notification was sent.
+
+Authenticated app household snapshots, meal-plan writes and device timer delivery
+remain for the owner’s matching-app testing. Blank-recipe automatic categorization
+calls the new AI endpoint in the matching InMotion branch, which remains pending
+that branch’s deployment. Existing signup and AI endpoints were left untouched.
