@@ -4,6 +4,9 @@ ctr.coffeybean.com {
 	handle /shopping {
 		reverse_proxy ctr-backend:8080
 	}
+	handle /media/recipes/* {
+		reverse_proxy ctr-backend:8081
+	}
 	handle {
 		respond 404
 	}

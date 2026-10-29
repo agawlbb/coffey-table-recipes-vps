@@ -26,12 +26,12 @@ def verify_cpu_policy():
 
 
 def deploy():
-    for name in ('database.json', 'firebase.json'):
+    for name in ('database.json', 'firebase.json', 'timer-push.json'):
         if not (HOME / 'private' / name).is_file():
             raise RuntimeError('Missing existing private configuration: ' + name)
     if not (ROOT / 'vendor/autoload.php').is_file():
         raise RuntimeError('Run dev exec composer install --no-dev in this checkout first')
-    for name in ('src', 'server.php', 'bootstrap.php', 'composer.lock', 'compose.yaml'):
+    for name in ('src', 'server.php', 'bootstrap.php', 'composer.lock', 'compose.yaml', 'backend.caddy'):
         if not (ROOT / name).exists():
             raise RuntimeError('Incomplete source checkout: ' + name)
 
@@ -53,6 +53,11 @@ def deploy():
     run('sudo', '-n', 'docker', 'compose', '-f', str(HOME / 'compose.yaml'),
         'exec', '-T', 'backend', 'php', '-r',
         "$s=@fsockopen('127.0.0.1',8080);exit($s===false?1:0);")
+    # The same site gains a narrowly scoped route for persistent recipe uploads.
+    run('sudo', '-n', 'install', '-m', '644', str(ROOT / 'backend.caddy'),
+        '/opt/vps/caddy/conf/sites/ctr-backend.caddy')
+    run('sudo', '-n', 'docker', 'exec', 'edge-caddy-1', 'caddy', 'reload',
+        '--config', '/etc/caddy/Caddyfile')
     verify_cpu_policy()
     print('VPS source copied; backend restarted and listening.')
 

@@ -53,3 +53,43 @@ NanoCpus=0, CpuQuota=0 and cpu.max=`max 100000`. Installed Compose matched sourc
 A pre/post snapshot confirmed unchanged memory, swap/reservation/swappiness,
 process, security, capability, root-filesystem, OOM and restart settings. No
 image build, app build, schema/data change or changes to other services occurred.
+
+## Remaining data transport — 2026-10-29
+
+Branch `backend_migration`, purpose: migrate remaining recipe/household/meal-plan
+and timer data using the shopping protocol, based on fetched `origin/main`
+`eb49ad5a7187d5e50410490dafe6b4aa1aa751b5`. Services were copied from the InMotion
+repository's accepted `5424e9d` implementation. SQL remains on InMotion; existing
+transactions, revision guards and immutable save/operation IDs are preserved.
+The VPS meal service requires a date for every new add/move.
+
+Verified in the shared development container, using disposable SQLite fixtures:
+
+- `php tests/data_socket.php`: authenticated recipe reads/adds/edits, immutable
+  replay, stale-edit rejection, household/person names, membership/HA/disabled
+  account boundaries, meal dates/conflicts and account-private timer replay.
+- Existing shopping/identity/HA/sync-request fixtures passed, including 21 signed
+  Firebase checks. Ported meal-plan (25 checks), timer and recipe-receipt fixtures
+  passed. `php tests/timer_push.php` verifies valid-token reuse and expiry renewal
+  for the long-running FCM sender using a local transport fixture.
+- `CTR_HA_SOURCE=/home/debian/projects/home-assistant-coffey-table-recipes .venv/bin/python -m unittest discover -s tests -p shopping_websocket.py`:
+  all three existing real WebSocket tests passed, including the actual HA client.
+- `.venv/bin/python -m unittest discover -s tests -p data_websocket.py`: all three
+  new wire tests passed: recipe saves/push/replay and household isolation; private
+  timers and public read-only recipe links; persistent photo uploads/readback,
+  unchanged old photo URLs, public image CORS and rejection of private-file URLs.
+- `.venv/bin/python -m unittest discover -s tests -p test_deployment.py`: all three
+  tests passed, including preservation of uploaded photos and sender credentials.
+- Strict Composer validation, runtime/fixture PHP syntax, changed Python syntax
+  and `git diff --check` passed.
+
+Deployment remains `python3 deploy.py`: copy code, restart the existing service
+and reload this repository's Caddy site for uploaded photos. Private configuration
+and state remain outside replaced code. No image build or schema migration is
+needed. The already-existing VPS timer sender was copied privately into the data
+service's protected configuration (mode 600, matching Firebase project); no AI,
+signup or cPanel credential was moved.
+
+No service restart, hosted endpoint removal, app build or installation was
+performed. No production data was used for development tests. These matching
+`backend_migration` branches remain unmerged for review.

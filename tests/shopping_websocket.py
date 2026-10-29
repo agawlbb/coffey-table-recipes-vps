@@ -24,13 +24,16 @@ class ShoppingWireTests(unittest.IsolatedAsyncioTestCase):
         with socket.socket() as probe:
             probe.bind(("127.0.0.1", 0))
             self.port = probe.getsockname()[1]
+        with socket.socket() as media_probe:
+            media_probe.bind(("127.0.0.1", 0))
+            self.media_port = media_probe.getsockname()[1]
         fd, self.database = tempfile.mkstemp(prefix="ctr-wire-")
         os.close(fd)
         self.runtime = tempfile.mkdtemp(prefix="ctr-wire-runtime-")
         self.log = tempfile.TemporaryFile()
         self.process = subprocess.Popen(
-            ["php", "tests/fixtures/shopping_socket_server.php", "start"], cwd=ROOT,
-            env={**os.environ, "CTR_LISTEN": f"websocket://127.0.0.1:{self.port}", "CTR_TEST_DATABASE": self.database, "CTR_RUNTIME_DIR": self.runtime},
+            ["php", getattr(self, "server_fixture", "tests/fixtures/shopping_socket_server.php"), "start"], cwd=ROOT,
+            env={**os.environ, "CTR_LISTEN": f"websocket://127.0.0.1:{self.port}", "CTR_TEST_DATABASE": self.database, "CTR_RUNTIME_DIR": self.runtime, "CTR_STORAGE": self.runtime + "/state", "CTR_MEDIA_LISTEN": f"http://127.0.0.1:{self.media_port}"},
             stdout=self.log, stderr=self.log, start_new_session=True)
         self.session = aiohttp.ClientSession()
         self.sockets = []

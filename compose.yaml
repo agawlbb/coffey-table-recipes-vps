@@ -1,4 +1,4 @@
-# VPS backend service; currently handles shopping synchronization.
+# VPS data service; the persistent MySQL database stays on InMotion.
 name: ctr-backend
 services:
   backend:

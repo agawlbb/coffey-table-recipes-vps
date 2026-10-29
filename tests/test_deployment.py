@@ -18,12 +18,12 @@ class DeploymentTests(unittest.TestCase):
             home = Path(directory) / 'backend'
             code = home / 'code'
             for name in ('src/ShoppingSocket.php', 'vendor/autoload.php', 'bootstrap.php',
-                         'server.php', 'composer.lock', 'compose.yaml'):
+                         'server.php', 'composer.lock', 'compose.yaml', 'backend.caddy'):
                 path = source / name
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_text('fixture')
-            for name in ('private/database.json', 'private/firebase.json',
-                         'state/pending.json', 'code/obsolete.php'):
+            for name in ('private/database.json', 'private/firebase.json', 'private/timer-push.json',
+                         'state/pending.json', 'state/media/recipes/photo.jpg', 'code/obsolete.php'):
                 path = home / name
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_text('keep')
@@ -34,6 +34,8 @@ class DeploymentTests(unittest.TestCase):
                 deploy.deploy()
                 verify_cpu.assert_called_once_with()
             self.assertEqual((home / 'state/pending.json').read_text(), 'keep')
+            self.assertEqual((home / 'state/media/recipes/photo.jpg').read_text(), 'keep')
+            self.assertEqual((home / 'private/timer-push.json').read_text(), 'keep')
             self.assertEqual((home / 'private/database.json').read_text(), 'keep')
             self.assertFalse((code / 'obsolete.php').exists())
             self.assertTrue((code / 'src/ShoppingSocket.php').is_file())
@@ -62,7 +64,7 @@ class DeploymentTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             (root / 'private').mkdir()
-            for name in ('database.json', 'firebase.json'):
+            for name in ('database.json', 'firebase.json', 'timer-push.json'):
                 (root / 'private' / name).write_text('fixture')
             with patch.object(deploy, 'ROOT', root), patch.object(deploy, 'HOME', root), \
                  patch.object(deploy, 'run') as run:

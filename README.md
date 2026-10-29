@@ -1,10 +1,13 @@
 # Coffey Table Recipes VPS backend
 
-This repository contains only the VPS service. It currently handles shopping
-synchronization at `wss://ctr.coffeybean.com/shopping` and can host more backend
-work later. The inMotion PHP backend remains in
-[coffey-table-recipes-server](https://github.com/agawlbb/coffey-table-recipes-server),
-branch `migration-take-2`. The database stays on inMotion.
+This repository contains the VPS data service at
+`wss://ctr.coffeybean.com/shopping`. The same connection now carries shopping,
+recipe reads/adds/edits, household snapshots, restaurants and meal plans.
+Account-scoped WebSocket connections synchronize timers; unauthenticated,
+read-only connections serve public recipe links. The persistent MySQL database
+stays on InMotion. Signup, account provisioning, invitations, account
+administration and AI access remain in the separate
+[InMotion repository](https://github.com/agawlbb/coffey-table-recipes-server).
 
 `server.php` runs the service; `src/` contains its code. Firebase ID tokens
 authenticate app users. HA credentials are checked against the existing shared
@@ -23,9 +26,15 @@ python3 deploy.py
 
 This copies source and locked dependencies into `/opt/services/ctr-backend/code/`
 and restarts the one `ctr-backend` container. No cPanel credential is used.
+Before deploying this migration, install the existing VPS timer sender credential
+as `private/timer-push.json` (mode 600); no AI or signup credential is moved.
 Credentials remain in `/opt/services/ctr-backend/private/`, and persistent state
 in `/opt/services/ctr-backend/state/`. Both are outside Git and are preserved.
 Routine source changes do not rebuild the runtime image or run schema/import jobs.
+New uploaded photos live in `state/media/recipes/`; existing InMotion photo URLs
+remain valid. Deployment also copies this repository's `backend.caddy` site and
+reloads Caddy to serve the new photos through the service's restricted media
+listener. No database migration, image build or app deployment is included.
 Production uses CPU shares 1024 with no hard CPU quota, allowing idle CPU use.
 Deployment verifies Docker CpuShares and effective cgroup cpu.max after restart.
 Keep memory/swap, process, security and restart settings unchanged.
@@ -42,6 +51,11 @@ PHP dependencies with `composer install --no-dev`. For wire tests, create this
 project's `.venv` and install `requirements-test.txt`.
 
 ```sh
+php tests/data_socket.php
+php tests/meal_plans.php
+php tests/timer_sync.php
+php tests/timer_push.php
+php tests/recipe_save_receipts.php
 php tests/authentication.php
 php tests/home_assistant_connections.php
 php tests/shopping_socket.php
@@ -49,6 +63,7 @@ php tests/shopping_lists.php
 php tests/shopping_sync_requests.php
 .venv/bin/python -m unittest discover -s tests -p 'test_deployment.py'
 .venv/bin/python -m unittest discover -s tests -p 'shopping_websocket.py'
+.venv/bin/python -m unittest discover -s tests -p 'data_websocket.py'
 ```
 
 Set `CTR_HA_SOURCE` to the HA checkout to include its actual client in the wire
