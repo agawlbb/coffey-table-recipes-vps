@@ -6,6 +6,7 @@ final class SnapshotPDO extends PDO {
     public function prepare(string $query,array $options=[]): PDOStatement|false {
         $this->reads++;
         $query=str_replace([' FOR UPDATE',' <=> ','DATE_SUB(CURRENT_TIMESTAMP, INTERVAL 60 DAY)','DATE_SUB(CURRENT_TIMESTAMP, INTERVAL 7 DAY)'],['',' IS ',"datetime('now','-60 days')","datetime('now','-7 days')"],$query);
+        $query=str_replace(' ON DUPLICATE KEY UPDATE id=LAST_INSERT_ID(id)','',$query);
         $query=str_replace('ON DUPLICATE KEY UPDATE','ON CONFLICT(installation_id) DO UPDATE SET',$query);
         $query=preg_replace('/VALUES\((\w+)\)/','excluded.$1',$query);
         return parent::prepare($query,$options);

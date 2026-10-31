@@ -56,13 +56,27 @@ $broadcast = static function (array $source) use (&$clients, $factory, $send): v
         } catch (Throwable $e) { $entry['connection']->close(); }
     }
 };
+$scheduleImages=static function(array $source,array $data) use ($factory,$aiJobs,$broadcast): void {
+    if (($source['scope']??'')!=='household' || !isset($data['recipe']['id'])) return;
+    try {
+        $ids=$factory()->missingCategoryImages($source['actor'],$data);
+        if (!$ids) return;
+        $aiJobs->start('artwork-'.$source['household'].'-'.$data['recipe']['id'],
+            ['token'=>$source['token'],'household'=>$source['household'],'scope'=>'ai',
+                'path'=>'/households/'.$source['household'].'/category-image','body'=>null,'category_ids'=>$ids],
+            static function(array $event): void { if (($event['type']??'')==='error') error_log('Automatic category artwork generation failed.'); },
+            static function(bool $success) use ($source,$broadcast): void { if ($success) $broadcast($source); });
+    } catch (HttpError $error) {
+        if ($error->errorCode!=='ai_busy') error_log('Could not start automatic category artwork.');
+    } catch (Throwable $error) { error_log('Could not start automatic category artwork.'); }
+};
 $worker->onConnect = static function (TcpConnection $c) use (&$clients): void {
     if (count($clients) >= 64) { $c->close(); return; }
     $c->maxSendBufferSize=32 * 1024 * 1024;
     $c->onBufferFull = static function (TcpConnection $slow): void { $slow->close(); };
     $clients[$c->id] = ['connection'=>$c, 'connected'=>time(), 'last'=>time(), 'rate'=>0, 'window'=>time()];
 };
-$worker->onMessage = static function (TcpConnection $c, string $text) use (&$clients, $factory, $send, $broadcast, $aiJobs): void {
+$worker->onMessage = static function (TcpConnection $c, string $text) use (&$clients, $factory, $send, $broadcast, $aiJobs,$scheduleImages): void {
     $id = null;
     try {
         $m = json_decode($text, true, 32, JSON_THROW_ON_ERROR);
@@ -100,7 +114,9 @@ $worker->onMessage = static function (TcpConnection $c, string $text) use (&$cli
                 $source=$entry;
                 $aiJobs->start((string)$c->id,['token'=>$entry['token'],'household'=>$entry['household'],'scope'=>$entry['scope'],'path'=>$m['path'],'body'=>$body],
                     static function(array $event) use ($c,$id,$send): void { $send($c,$event+['id'=>$id]); },
-                    static function(bool $success) use ($source,$broadcast,$body): void { if ($success && $body!==null) $broadcast($source); });
+                    static function(bool $success,?array $data=null) use ($source,$broadcast,$body,$scheduleImages): void {
+                        if ($success && $body!==null) { $broadcast($source); if ($data!==null) $scheduleImages($source,$data); }
+                    });
                 return;
             }
             if ($entry['scope']==='ai') throw new HttpError(404,'not_found','AI endpoint not found.');
@@ -108,6 +124,7 @@ $worker->onMessage = static function (TcpConnection $c, string $text) use (&$cli
             $send($c, ['type'=>'response','id'=>$id,'data'=>$data]);
             if ($body !== null) {
                 $broadcast($entry);
+                $scheduleImages($entry,$data);
             }
         }
     } catch (HttpError $e) {

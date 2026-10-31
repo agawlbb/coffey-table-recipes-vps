@@ -43,3 +43,19 @@ media host. No database migration is needed.
 The VPS runtime from source commit `3bbd772` is deployed from this branch on the
 user's explicit instruction. The branch remains unmerged. Shared hosting and app
 deployments are unchanged. Deployment evidence is recorded in VALIDATION.md.
+
+## Automatically generated subcategory artwork
+
+Recipe saves acknowledge the committed recipe first. The VPS then finds assigned
+imported subcategories without their own artwork and starts an existing AI worker
+to generate their covers. Completion broadcasts a new household snapshot, so this
+does not depend on app-side category IDs or a category-image follow-up request.
+This post-save job continues if the saving app disconnects; interactive AI requests
+retain their existing connection-bound cancellation. Household image permissions
+are checked before scheduling and again in the image service. Existing owned covers,
+including those hosted on InMotion, are reused without a new provider call.
+
+New subcategories start with an empty image key, displaying the existing neutral
+placeholder until artwork is available, rather than inheriting a misleading parent
+picture. Generation failures preserve the committed recipe and can retry on its
+next save. No new UI, app build, schema migration or deployment backup is required.

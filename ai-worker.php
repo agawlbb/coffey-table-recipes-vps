@@ -15,7 +15,14 @@ try {
     };
     $service=new DataSocket($pdo,$verify,new ShoppingSocket($pdo,$verify,new HomeAssistantConnections($pdo),new ShoppingSyncRequests(CTR_STORAGE.'/shopping-sync-requests')),null,$categorize);
     $actor=$service->authenticate($request['token'],$request['household'],$request['scope']);
-    $data=AiService::matches($request['path'])
+    if (isset($request['category_ids'])) {
+        $data=[];
+        $images=new AiService($pdo,$config,CTR_STORAGE,$progress,$transport);
+        foreach ($request['category_ids'] as $category) {
+            $service->authenticate($request['token'],$request['household'],$request['scope']);
+            $images->handle($actor,$request['path'],['category_id'=>$category]);
+        }
+    } else $data=AiService::matches($request['path'])
         ? (new AiService($pdo,$config,CTR_STORAGE,$progress,$transport??null))->handle($actor,$request['path'],$request['body'])
         : $service->handle($request['token'],$request['household'],$request['path'],$request['body'],$request['scope']);
     // Check live account/membership again before returning a long-running result.

@@ -10,9 +10,11 @@ final class CategoryImageService {
     public function __construct(private PDO $pdo,private RecipePhotoService $photos,private string $directory,private string $url) {}
     public function ensure(string $id,string $userId,string $householdId): string {
         (new HouseholdService($this->pdo))->membership($userId, $householdId);
-        $q=$this->pdo->prepare("SELECT c.label,c.slug,p.label AS parent_label FROM recipe_categories c JOIN recipe_categories p ON p.id=c.parent_id WHERE c.id=? AND EXISTS (SELECT 1 FROM recipe_category_assignments a WHERE a.category_id=c.id AND EXISTS (SELECT 1 FROM recipe_households h JOIN recipes r ON r.id=h.recipe_id AND r.deleted_at IS NULL WHERE h.recipe_id=a.recipe_id AND h.household_id=? AND h.removed_at IS NULL))");
+        $q=$this->pdo->prepare("SELECT c.label,c.slug,c.image_key,p.label AS parent_label FROM recipe_categories c JOIN recipe_categories p ON p.id=c.parent_id WHERE c.id=? AND EXISTS (SELECT 1 FROM recipe_category_assignments a WHERE a.category_id=c.id AND EXISTS (SELECT 1 FROM recipe_households h JOIN recipes r ON r.id=h.recipe_id AND r.deleted_at IS NULL WHERE h.recipe_id=a.recipe_id AND h.household_id=? AND h.removed_at IS NULL))");
         $q->execute([$id,$householdId]); $category=$q->fetch(PDO::FETCH_ASSOC);
         if (!$category || !str_starts_with($category['slug'],'import-')) throw new HttpError(404,'category_not_found','New category not found.');
+        // An existing category owns its image even when it is still hosted on InMotion.
+        if ($category['image_key']==='ai-'.$id) return self::imageUrl($id,'https://coffeybean.com/CoffeyTableRecipes/media/recipes');
         return $this->publish($id,$category,$userId,fn()=>(new HouseholdService($this->pdo))->requireAiImages($userId,$householdId));
     }
 

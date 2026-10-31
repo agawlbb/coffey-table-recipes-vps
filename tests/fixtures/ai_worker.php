@@ -17,6 +17,7 @@ $config=['api_key'=>'fixture-only','model'=>'gpt-5.4-mini','variation_access'=>'
 $transport=static function(array $payload): array {
     // Deliberately slower than the wire test's ping deadline: proves provider work cannot block sockets.
     usleep(1200000);
+    if (is_string($payload['input']??null) && str_contains($payload['input'],'"category":"Failure"')) return ['status'=>503,'body'=>'{}'];
     if (($payload['tools'][0]['type']??'')==='image_generation') return ['status'=>200,'body'=>json_encode(['status'=>'completed','output'=>[['type'=>'image_generation_call','status'=>'completed','result'=>trim(file_get_contents(__DIR__.'/photo.base64'))]]])];
     if (($payload['text']['format']['name']??'')==='blank_recipe_category') return ['status'=>200,'body'=>json_encode(['status'=>'completed','output'=>[['content'=>[['type'=>'output_text','text'=>json_encode(['label'=>'Soups','parent_label'=>'Meals'])]]]]])];
     return ['status'=>200,'body'=>json_encode(['status'=>'completed','output'=>[['content'=>[['type'=>'output_text','text'=>json_encode([

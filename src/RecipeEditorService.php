@@ -277,7 +277,8 @@ final class RecipeEditorService
                         if (!$parent) $this->invalid('New categories need an existing parent category.');
                         $slug = 'import-'.hash('sha256',$parent['id'].'|'.mb_strtolower($labels['label']));
                         $q = $this->pdo->prepare('INSERT INTO recipe_categories (parent_id,slug,label,image_key,position) VALUES (?,?,?,?,100) ON DUPLICATE KEY UPDATE id=LAST_INSERT_ID(id)');
-                        $q->execute([$parent['id'],$slug,$labels['label'],$parent['image_key']]);
+                        // A new subcategory has no artwork yet; parent artwork is not its own cover.
+                        $q->execute([$parent['id'],$slug,$labels['label'],'']);
                         $id = $this->pdo->lastInsertId();
                     }
                 }

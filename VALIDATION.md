@@ -195,3 +195,31 @@ only. Shared-hosting and app branches were neither deployed nor merged.
 These production checks validate deployment, configuration/model access and
 socket availability. No paid AI generation, signed-in end-user AI/clarification
 run, physical-device suspension test or app build/deployment was performed.
+
+# Subcategory artwork correction — 2026-10-31
+
+Resumed `feature/vps-ai-websocket` after fetching and confirming clean matching
+local/GitHub heads at `a7d38bc`. The reported category is Mexican under Main dishes,
+ID 41. Read-only production inspection found an inherited `main-dishes` stock
+image key and no generated category-41 file. Its household allows AI artwork.
+This was a missed generation, not an AI response reusing another generated photo.
+Local-first recipe saves can return before server category IDs exist, while local
+browsing sets needs_ai_image false; app-side follow-up generation is insufficient.
+
+The VPS now schedules missing assigned subcategory artwork after acknowledging a
+committed recipe. It pushes the completed artwork in household snapshots and does
+not copy parent artwork into new subcategories. Existing owned artwork remains
+idempotent, including original-host images. Scheduling honors household permission;
+provider failure preserves the saved recipe. No Flutter or shared-hosting source
+changed, and no main merge is authorized.
+
+Validation: changed runtime PHP files passed syntax checks. The focused PHP
+scripts `tests/category_images.php`, `tests/data_socket.php`, `tests/ai_jobs.php`
+and `tests/recipe_save_receipts.php` passed. Real socket checks using disposable
+SQLite/fake provider responses passed: `ai_websocket.py` (eight),
+`data_websocket.py` (three), and `shopping_websocket.py` (two, one existing
+fixture-inapplicable skip). New coverage checks save acknowledgment before image
+completion, completion after the saving client disconnects, a pushed owned image,
+existing-cover reuse, disabled generation and preservation after provider failure.
+Changed Python compiled and `git diff --check` passed. Existing Flutter validation
+was retained; there is no app change or app build for this repair.

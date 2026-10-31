@@ -34,7 +34,7 @@ final class AiJobs {
                 catch (Throwable $e) { $this->fail($key,'AI could not complete this request. Please try again.'); break; }
                 if (($event['type']??'')==='progress') { $job['message']=$event['message']; $job['last']=microtime(true); $event['elapsed_seconds']=(int)(microtime(true)-$job['started']); ($job['emit'])($event); }
                 elseif (in_array($event['type']??'', ['response','error'],true)) {
-                    ($job['emit'])($event); $done=$job['done']; $success=$event['type']==='response'; $this->stop($key); $done($success); break;
+                    ($job['emit'])($event); $done=$job['done']; $success=$event['type']==='response'; $this->stop($key); $done($success,$event['data']??null); break;
                 }
             }
             unset($job);

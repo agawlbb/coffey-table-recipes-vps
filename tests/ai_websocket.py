@@ -139,6 +139,85 @@ class AiWireTests(unittest.IsolatedAsyncioTestCase):
         response, _ = await self.result()
         self.assertEqual(response['type'], 'response', response)
 
+    async def test_save_alone_generates_own_category_artwork_and_pushes_snapshot(self):
+        await self.auth(self.app, scope='household')
+        observer=await self.connect()
+        await self.auth(observer,scope='household')
+        with closing(sqlite3.connect(self.database)) as db, db:
+            db.execute("UPDATE recipe_categories SET image_key='main-dishes' WHERE id=10")
+        body=dict(title='Mexican recipe', source_type='Pasted text', original_language='en',
+                  measurement_system='unspecified', client_save_id='e'*32,
+                  groups=[], ingredients=[], steps=[], actions=[], photos=[], tags=[],
+                  category_assignments=[dict(label='Mexican',parent_label='Meals')], pairings=[], nutrition=None)
+        await self.app.send_json(dict(v=1,type='request',id='save-new-category',path='/households/1/recipes',body=body))
+        # Saving does not wait for the 1.2-second fake image generator.
+        saved=await asyncio.wait_for(self.message(self.app),.7)
+        self.assertEqual(saved['type'],'response',saved)
+        category=saved['data']['recipe']['category_assignments'][0]['category_id']
+        with closing(sqlite3.connect(self.database)) as db:
+            self.assertEqual(db.execute('SELECT image_key FROM recipe_categories WHERE id=?',(category,)).fetchone()[0],'')
+        await self.app.close()
+        while True:
+            frame=await self.message(observer)
+            self.assertEqual(frame['type'],'snapshot',frame)
+            row=next(c for c in frame['data']['library']['categories'] if str(c['id'])==str(category))
+            if row['image_key']=='ai-'+str(category):
+                break
+        self.assertEqual(row['image_url'],f'https://ctr.coffeybean.com/media/recipes/category-{category}.jpg')
+        async with self.session.get(f'http://127.0.0.1:{self.media_port}/media/recipes/category-{category}.jpg') as image:
+            self.assertEqual(image.status,200)
+        # An explicit app follow-up must reuse the owned cover instead of regenerating.
+        other=await self.connect()
+        await self.auth(other,scope='ai')
+        await other.send_json(dict(v=1,type='request',id='ensure-existing',path='/households/1/category-image',body=dict(category_id=str(category))))
+        while True:
+            result=await asyncio.wait_for(self.message(other),.7)
+            if result['type']!='progress':
+                break
+        self.assertEqual(result['type'],'response',result)
+
+    async def test_failed_artwork_keeps_saved_recipe_and_connection_usable(self):
+        await self.auth(self.app,scope='household')
+        body=dict(title='Saved despite image failure',source_type='Pasted text',original_language='en',
+                  measurement_system='unspecified',client_save_id='g'*32,groups=[],ingredients=[],
+                  steps=[],actions=[],photos=[],tags=[],category_assignments=[dict(label='Failure',parent_label='Meals')],pairings=[],nutrition=None)
+        await self.app.send_json(dict(v=1,type='request',id='save-failure',path='/households/1/recipes',body=body))
+        result=await self.message(self.app)
+        self.assertEqual(result['type'],'response',result)
+        recipe=result['data']['recipe']['id']
+        category=result['data']['recipe']['category_assignments'][0]['category_id']
+        self.assertEqual((await self.message(self.app))['type'],'snapshot')
+        for _ in range(80):
+            self.log.seek(0)
+            if b'Automatic category artwork generation failed.' in self.log.read():
+                break
+            await asyncio.sleep(.05)
+        else:
+            self.fail('Expected bounded artwork failure was not observed')
+        with closing(sqlite3.connect(self.database)) as db:
+            self.assertIsNotNone(db.execute('SELECT id FROM recipes WHERE id=?',(recipe,)).fetchone())
+            self.assertEqual(db.execute('SELECT image_key FROM recipe_categories WHERE id=?',(category,)).fetchone()[0],'')
+        await self.app.send_json(dict(v=1,type='ping'))
+        self.assertEqual((await self.message(self.app))['type'],'pong')
+
+    async def test_disabled_image_permission_does_not_reuse_parent_or_generate(self):
+        await self.auth(self.app,scope='household')
+        with closing(sqlite3.connect(self.database)) as db, db:
+            db.execute('UPDATE households SET ai_images_enabled=0 WHERE id=1')
+            db.execute("UPDATE recipe_categories SET image_key='main-dishes' WHERE id=10")
+        body=dict(title='Category without image access',source_type='Pasted text',original_language='en',
+                  measurement_system='unspecified',client_save_id='f'*32,groups=[],ingredients=[],
+                  steps=[],actions=[],photos=[],tags=[],category_assignments=[dict(label='Mexican',parent_label='Meals')],pairings=[],nutrition=None)
+        await self.app.send_json(dict(v=1,type='request',id='save-disabled',path='/households/1/recipes',body=body))
+        result=await self.message(self.app)
+        self.assertEqual(result['type'],'response',result)
+        category=result['data']['recipe']['category_assignments'][0]['category_id']
+        with closing(sqlite3.connect(self.database)) as db:
+            self.assertEqual(db.execute('SELECT image_key FROM recipe_categories WHERE id=?',(category,)).fetchone()[0],'')
+        self.assertEqual((await self.message(self.app))['type'],'snapshot')
+        async with self.session.get(f'http://127.0.0.1:{self.media_port}/media/recipes/category-{category}.jpg') as image:
+            self.assertEqual(image.status,404)
+
 
 if __name__ == '__main__':
     unittest.main()

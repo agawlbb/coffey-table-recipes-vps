@@ -128,6 +128,23 @@ final class DataSocket
         throw new HttpError(404,'not_found','Data endpoint not found.');
     }
 
+    /** Post-save artwork must not depend on an app receiving server category IDs. */
+    public function missingCategoryImages(array $actor,array $data): array {
+        if ($actor['scope']!=='household' || !isset($data['recipe']['id'])) return [];
+        $ids=[];
+        foreach ($data['recipe']['category_assignments']??[] as $row) {
+            $id=(string)($row['category_id']??'');
+            if (preg_match('/^[1-9][0-9]*$/D',$id)) $ids[]=$id;
+        }
+        if (!$ids || !(new HouseholdService($this->pdo))->aiImagesEnabled($actor['user'],$actor['household'])) return [];
+        $q=$this->pdo->prepare('SELECT id,slug,image_key FROM recipe_categories WHERE parent_id IS NOT NULL AND id IN ('.implode(',',array_fill(0,count($ids),'?')).')');
+        $q->execute($ids); $missing=[];
+        foreach ($q->fetchAll(PDO::FETCH_ASSOC) as $category) {
+            if (str_starts_with($category['slug']??'','import-') && $category['image_key']!=='ai-'.$category['id']) $missing[]=(string)$category['id'];
+        }
+        return $missing;
+    }
+
     private function name(mixed $name): string {
         if (!is_string($name)||trim($name)===''||mb_strlen($name)>200) throw new HttpError(422,'invalid_name','Please enter a name of 1 to 200 characters.');
         return trim($name);
