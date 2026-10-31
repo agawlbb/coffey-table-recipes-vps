@@ -3,8 +3,9 @@
 Branch `feature/vps-ai-websocket` starts at fetched `origin/main` `b977c8f`.
 Matching app and InMotion branches start at `2920c38` and `c5503a3`.
 The user approved integration and branch removal on October 31, 2026. Completed
-source is integrated into main and the VPS is deployed from main. No app build,
-shared-hosting deployment or additional rollback copy is requested.
+source is integrated into main and the VPS is deployed from main. The user also
+explicitly authorized the shared-hosting backend's normal main-push deployment.
+No app build or additional rollback copy is requested.
 
 The existing `/shopping` WebSocket accepts `scope: ai` with a Firebase token and
 an optional household ID. Household requests require that household; parent
@@ -43,8 +44,8 @@ review reads only authorized stored keys, from VPS storage or the fixed original
 media host. No database migration is needed.
 
 The deployed runtime includes the artwork correction from source commit `0dfda05`.
-The user has approved integration and VPS redeployment from main. Shared hosting
-and app deployments are unchanged. Deployment evidence is recorded in VALIDATION.md.
+The user has approved integration and deployment of both backends from main.
+App deployments are unchanged. Deployment evidence is recorded in VALIDATION.md.
 
 ## Automatically generated subcategory artwork
 

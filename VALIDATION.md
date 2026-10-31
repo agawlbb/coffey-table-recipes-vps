@@ -242,3 +242,43 @@ snapshot now contains the owned VPS image URL. Public WSS authentication and
 ping/pong passed after restart. Branches remain unmerged; shared-hosting and app
 source/deployments are unchanged. The automatic new-save sequence was exercised
 with disposable fixtures; no synthetic production recipe was created for testing.
+
+# Completed integration and deployment from defaults — 2026-10-31
+
+The user declared the work complete, authorized integrating every task repository,
+requested deployment from main and removal of the feature branches, then explicitly
+confirmed that the shared-hosting backend should deploy through its normal push
+trigger. No branch protection, history rewrite, app build or app release was added.
+
+- App main includes the accepted WebSocket/progress source at `573e51e`.
+  Its workflows remain manually dispatched; no app build/deployment was started.
+- Shared-hosting main includes the endpoint retirements at
+  `42ab6258f6a2ace0fcdeb9f64e5df538028241ec`. The initial integration merge skipped
+  deployment; the user's subsequent explicit instruction was fulfilled with a
+  normal main push. [Deployment run 41194982790](https://github.com/agawlbb/coffey-table-recipes-server/actions/runs/41194982790)
+  succeeded. The public backend-version.json receipt matches that exact commit.
+  Cache-bypassed live GET/POST checks return `410 ai_moved` for recipe import and
+  `410 ai_moved` for parent-category administration; health remains HTTP 200.
+- Before integration, latest fetched defaults were already ancestors of each
+  task branch. No runtime source changed during integration. Existing app/VPS
+  test evidence remains applicable. The shared-hosting workflow's 29 fixture
+  scripts and all 122 tool tests passed locally, and its complete CI deployment
+  checks subsequently passed. No synthetic production recipe or paid AI run was
+  added during integration verification.
+- VPS main at `7754d0df088d2b5f46b7a70c3e33189513f6bd6b` was published and
+  deployed using `python3 deploy.py` from the canonical main checkout. The current
+  documentation follow-up does not change runtime files. Installed PHP hashes
+  match main. The existing runtime image remains
+  `sha256:48d43a22111a500ed5853688f3db2406a97634c4d978db834ff24b3d36797e36`;
+  no runtime image build or rollback copy was made. CpuShares=1024 and effective
+  cpu.max=`max 100000` passed. The container runs with zero restarts. Public WSS
+  authentication/heartbeat passed, and category 41's JPEG remains publicly served
+  with bytes matching its persistent file.
+- The administration cleanup/policy work is integrated at `f810fba` into that
+  repository's existing canonical default `work`; no replacement main branch was
+  created. Application/deployment feature branches are removed locally/remotely
+  only after merge ancestry verification. Temporary task checkouts contain only
+  merged tracked source and generated caches/dependencies and are removed.
+  The old fully merged local backend_migration branch is also removed; its
+  published history remains in main. Final default trees must be clean and their
+  local/GitHub heads must match before reporting completion.
