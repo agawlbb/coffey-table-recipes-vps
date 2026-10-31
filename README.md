@@ -282,3 +282,18 @@ AI tests with fake providers/disposable SQLite. Coverage includes full visible
 recipe contents, provisional and revised drafts, unchanged/hypothetical discussion,
 legacy conversations, duplicate suppression, cache/retry consistency and existing
 context/access/review-save behavior. No paid AI call or production recipe mutation.
+
+
+### Accepted context and visibility deployment — 2026-10-31
+
+The user approved merging and deploying both changes. GitHub main merge
+`d9177eff748bef6fa43b9a20977421264e079238` includes the exact feature source
+verified by 96 chat checks, 71 context checks and 12 real-socket AI tests.
+Main had no intervening changes, so integration did not alter that tested source.
+The existing deployer copied code and restarted the VPS service successfully.
+Public HTTPS health returned 200 with status ok; the live runtime loads the chat
+service and reports running with zero restarts. Installed worker, chat service
+and user-context source hashes match main. CpuShares=1024 and unlimited cpu.max
+were verified. Persistent state and private configuration stay outside replaced
+code. No app build, paid AI request, recipe write, database migration or InMotion
+backend deployment was performed. This supersedes the earlier pending status.
