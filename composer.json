@@ -13,6 +13,7 @@
     "ext-mbstring": "*",
     "ext-pcntl": "*",
     "firebase/php-jwt": "^7.2",
-    "workerman/workerman": "^5.2"
+    "workerman/workerman": "^5.2",
+    "phpmailer/phpmailer": "^7.0"
   }
 }

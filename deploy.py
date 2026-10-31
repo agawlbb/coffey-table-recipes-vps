@@ -26,12 +26,12 @@ def verify_cpu_policy():
 
 
 def deploy():
-    for name in ('database.json', 'firebase.json', 'timer-push.json', 'recipe-ai.local.json'):
+    for name in ('database.json', 'firebase.json', 'timer-push.json', 'recipe-ai.local.json', 'smtp.json', 'firebase-admin.json'):
         if not (HOME / 'private' / name).is_file():
             raise RuntimeError('Missing existing private configuration: ' + name)
     if not (ROOT / 'vendor/autoload.php').is_file():
         raise RuntimeError('Run dev exec composer install --no-dev in this checkout first')
-    for name in ('src', 'server.php', 'ai-worker.php', 'bootstrap.php', 'composer.lock', 'compose.yaml', 'backend.caddy'):
+    for name in ('src', 'assets/email/coffey_table.jpg', 'server.php', 'ai-worker.php', 'account-worker.php', 'bootstrap.php', 'composer.lock', 'compose.yaml', 'backend.caddy'):
         if not (ROOT / name).exists():
             raise RuntimeError('Incomplete source checkout: ' + name)
 
@@ -44,9 +44,9 @@ def deploy():
             shutil.rmtree(path)
         else:
             path.unlink()
-    for name in ('src', 'vendor'):
+    for name in ('src', 'vendor', 'assets'):
         shutil.copytree(ROOT / name, CODE / name)
-    for name in ('bootstrap.php', 'server.php', 'ai-worker.php', 'composer.lock'):
+    for name in ('bootstrap.php', 'server.php', 'ai-worker.php', 'account-worker.php', 'composer.lock'):
         shutil.copy2(ROOT / name, CODE / name)
     run('sudo', '-n', 'install', '-m', '644', compose, str(HOME / 'compose.yaml'))
     run('sudo', '-n', 'docker', 'compose', '-f', str(HOME / 'compose.yaml'), 'up', '-d', '--no-build')

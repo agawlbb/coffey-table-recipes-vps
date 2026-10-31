@@ -5,8 +5,9 @@ This repository contains the VPS data service at
 recipe reads/adds/edits, household snapshots, restaurants and meal plans.
 Account-scoped WebSocket connections synchronize timers; unauthenticated,
 read-only connections serve public recipe links. The persistent MySQL database
-stays on InMotion. Signup, account provisioning, invitations, account
-administration remain in the separate
+stays on InMotion. Account bootstrap, household setup, verification mail and
+invitations use the account WebSocket scope; see [ACCOUNT-WEBSOCKET.md](ACCOUNT-WEBSOCKET.md).
+Child-mode PIN policy and account administration remain in the separate
 [InMotion repository](https://github.com/agawlbb/coffey-table-recipes-server).
 
 AI imports, clarification turns, variations and image generation also use this
@@ -32,7 +33,9 @@ This copies source and locked dependencies into `/opt/services/ctr-backend/code/
 and restarts the one `ctr-backend` container. No cPanel credential is used.
 Before deploying this migration, install the existing VPS timer sender credential
 as `private/timer-push.json` (mode 600). AI uses the uploaded
-`private/recipe-ai.local.json` (mode 600); signup credentials remain on InMotion.
+`private/recipe-ai.local.json` (mode 600). Account actions require the existing
+SMTP relay settings in `private/smtp.json` and account credential in
+`private/firebase-admin.json` (mode 600); see the account setup above.
 Credentials remain in `/opt/services/ctr-backend/private/`, and persistent state
 in `/opt/services/ctr-backend/state/`. Both are outside Git and are preserved.
 Routine source changes do not rebuild the runtime image or run schema/import jobs.

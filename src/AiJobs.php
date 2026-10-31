@@ -1,13 +1,13 @@
 <?php
 declare(strict_types=1);
 
-/** Small nonblocking bridge to isolated PHP AI children. Socket heartbeats keep running. */
+/** Nonblocking bridge to isolated PHP workers. Socket heartbeats keep running. */
 final class AiJobs {
     private array $jobs=[];
-    public function __construct(private array $command=[PHP_BINARY,__DIR__.'/../ai-worker.php']) {}
+    public function __construct(private array $command=[PHP_BINARY,__DIR__.'/../ai-worker.php'], private string $label='AI', private int $timeout=600) {}
 
     public function start(string $key,array $request,callable $emit,callable $done): void {
-        if (isset($this->jobs[$key]) || count($this->jobs)>=4) throw new HttpError(409,'ai_busy','An AI request is already running. Please wait.');
+        if (isset($this->jobs[$key]) || count($this->jobs)>=4) throw new HttpError(409,$this->label==='AI'?'ai_busy':'account_busy',$this->label.' request is already running. Please wait.');
         $process=proc_open($this->command,[0=>['pipe','r'],1=>['pipe','w'],2=>['file','/dev/null','a']],$pipes);
         if (!is_resource($process)) throw new RuntimeException('Cannot start AI worker');
         $input=json_encode($request,JSON_THROW_ON_ERROR); $offset=0;
@@ -27,11 +27,11 @@ final class AiJobs {
             if (!isset($this->jobs[$key])) continue;
             $job=&$this->jobs[$key];
             $job['buffer'].=stream_get_contents($job['pipe']);
-            if (strlen($job['buffer'])>16*1024*1024) { $this->fail($key,'AI returned too much data. Please try a smaller request.'); continue; }
+            if (strlen($job['buffer'])>16*1024*1024) { $this->fail($key,$this->label.' returned too much data. Please try a smaller request.'); continue; }
             while (($end=strpos($job['buffer'],"\n"))!==false) {
                 $line=substr($job['buffer'],0,$end); $job['buffer']=substr($job['buffer'],$end+1);
                 try { $event=json_decode($line,true,32,JSON_THROW_ON_ERROR); }
-                catch (Throwable $e) { $this->fail($key,'AI could not complete this request. Please try again.'); break; }
+                catch (Throwable $e) { $this->fail($key,$this->label.' could not complete this request. Please try again.'); break; }
                 if (($event['type']??'')==='progress') { $job['message']=$event['message']; $job['last']=microtime(true); $event['elapsed_seconds']=(int)(microtime(true)-$job['started']); ($job['emit'])($event); }
                 elseif (in_array($event['type']??'', ['response','error'],true)) {
                     ($job['emit'])($event); $done=$job['done']; $success=$event['type']==='response'; $this->stop($key); $done($success,$event['data']??null); break;
@@ -40,15 +40,15 @@ final class AiJobs {
             unset($job);
             if (!isset($this->jobs[$key])) continue;
             $job=&$this->jobs[$key]; $now=microtime(true);
-            if ($now-$job['started']>600) { $this->fail($key,'AI took too long. Your input is still here; please try again.'); }
-            elseif (!proc_get_status($job['process'])['running']) { $this->fail($key,'AI was interrupted. Your input is still here; please try again.'); }
+            if ($now-$job['started']>$this->timeout) { $this->fail($key,$this->label.' took too long. Please try again.'); }
+            elseif (!proc_get_status($job['process'])['running']) { $this->fail($key,$this->label.' was interrupted. Please try again.'); }
             elseif ($now-$job['last']>=10) { $job['last']=$now; ($job['emit'])(['type'=>'progress','message'=>$job['message'],'elapsed_seconds'=>(int)($now-$job['started'])]); }
             unset($job);
         }
     }
 
     private function fail(string $key,string $message): void {
-        ($this->jobs[$key]['emit'])(['type'=>'error','status'=>503,'error'=>['code'=>'ai_interrupted','message'=>$message]]);
+        ($this->jobs[$key]['emit'])(['type'=>'error','status'=>503,'error'=>['code'=>$this->label==='AI'?'ai_interrupted':'account_interrupted','message'=>$message]]);
         $done=$this->jobs[$key]['done']; $this->stop($key); $done(false);
     }
 
