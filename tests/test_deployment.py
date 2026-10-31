@@ -18,11 +18,11 @@ class DeploymentTests(unittest.TestCase):
             home = Path(directory) / 'backend'
             code = home / 'code'
             for name in ('src/ShoppingSocket.php', 'vendor/autoload.php', 'bootstrap.php',
-                         'server.php', 'ai-worker.php', 'composer.lock', 'compose.yaml', 'backend.caddy'):
+                         'server.php', 'ai-worker.php', 'account-worker.php', 'assets/email/coffey_table.jpg', 'composer.lock', 'compose.yaml', 'backend.caddy'):
                 path = source / name
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_text('fixture')
-            for name in ('private/database.json', 'private/firebase.json', 'private/timer-push.json', 'private/recipe-ai.local.json',
+            for name in ('private/database.json', 'private/firebase.json', 'private/timer-push.json', 'private/recipe-ai.local.json', 'private/smtp.json', 'private/firebase-admin.json', 'private/child-mode-sql-import.json',
                          'state/pending.json', 'state/media/recipes/photo.jpg', 'code/obsolete.php'):
                 path = home / name
                 path.parent.mkdir(parents=True, exist_ok=True)
@@ -37,8 +37,12 @@ class DeploymentTests(unittest.TestCase):
             self.assertEqual((home / 'state/media/recipes/photo.jpg').read_text(), 'keep')
             self.assertEqual((home / 'private/timer-push.json').read_text(), 'keep')
             self.assertEqual((home / 'private/database.json').read_text(), 'keep')
+            self.assertEqual((home / 'private/smtp.json').read_text(), 'keep')
+            self.assertEqual((home / 'private/firebase-admin.json').read_text(), 'keep')
             self.assertFalse((code / 'obsolete.php').exists())
             self.assertTrue((code / 'src/ShoppingSocket.php').is_file())
+            self.assertTrue((code / 'account-worker.php').is_file())
+            self.assertTrue((code / 'assets/email/coffey_table.jpg').is_file())
             commands = [call.args for call in run.call_args_list]
             self.assertFalse(any('build' in call for call in commands))
             self.assertFalse(any('cpanel' in str(call).lower() for call in commands))
@@ -64,11 +68,22 @@ class DeploymentTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             (root / 'private').mkdir()
-            for name in ('database.json', 'firebase.json', 'timer-push.json', 'recipe-ai.local.json'):
+            for name in ('database.json', 'firebase.json', 'timer-push.json', 'recipe-ai.local.json', 'smtp.json', 'firebase-admin.json', 'child-mode-sql-import.json'):
                 (root / 'private' / name).write_text('fixture')
             with patch.object(deploy, 'ROOT', root), patch.object(deploy, 'HOME', root), \
                  patch.object(deploy, 'run') as run:
                 with self.assertRaisesRegex(RuntimeError, 'composer install'):
+                    deploy.deploy()
+                run.assert_not_called()
+
+    def test_missing_account_credentials_stops_before_changing_deployment(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / 'private').mkdir()
+            for name in ('database.json', 'firebase.json', 'timer-push.json', 'recipe-ai.local.json'):
+                (root / 'private' / name).write_text('fixture')
+            with patch.object(deploy, 'HOME', root), patch.object(deploy, 'run') as run:
+                with self.assertRaisesRegex(RuntimeError, 'smtp.json'):
                     deploy.deploy()
                 run.assert_not_called()
 

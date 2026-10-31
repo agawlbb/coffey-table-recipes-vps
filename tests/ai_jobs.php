@@ -21,4 +21,10 @@ try { $jobs->start('1',[],static function(){},static function(){}); throw new Ru
 catch (HttpError $error) { jobCheck($error->errorCode==='ai_busy'); }
 $start=microtime(true); $jobs->stop('1'); $jobs->poll();
 jobCheck(microtime(true)-$start<0.8);
+$events=[];
+$jobs=new AiJobs([PHP_BINARY,'-r','stream_get_contents(STDIN); exit(1);'],'Account',85);
+$jobs->start('account',[],function($event) use (&$events){$events[]=$event;},static function(){});
+finishJob($jobs,$events);
+jobCheck(end($events)['error']['code']==='account_interrupted');
+jobCheck(str_starts_with(end($events)['error']['message'],'Account'));
 echo "AI worker crash recovery, duplicate-run protection and cancellation passed\n";

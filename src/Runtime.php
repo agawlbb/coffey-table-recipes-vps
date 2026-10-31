@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 
-/** Each AI child opens its own database connection; no inherited PDO/socket state. */
+/** Each worker opens its own database connection; no inherited PDO/socket state. */
 function runtimeDatabase(): PDO {
     $private=getenv('CTR_PRIVATE') ?: '/run/ctr-private';
     $db=json_decode(file_get_contents($private.'/database.json'),true,16,JSON_THROW_ON_ERROR);
@@ -24,4 +24,18 @@ function runtimeAiConfig(?callable $progress=null): array {
     return array_replace(['variation_model'=>'gpt-5.4-mini','image_model'=>'gpt-image-2.5-flare',
         'variation_access'=>'all_members','variation_billing'=>'paid'], $config,
         ['model'=>'gpt-5.4-mini','progress'=>$progress]);
+}
+
+
+function runtimeAccountConfig(): array {
+    $private=getenv('CTR_PRIVATE') ?: '/run/ctr-private';
+    if (!is_file($private.'/smtp.json') || !is_file($private.'/firebase-admin.json')) throw new HttpError(503,'account_not_configured','The account service is not configured yet.');
+    $firebase=json_decode(file_get_contents($private.'/firebase.json'),true,16,JSON_THROW_ON_ERROR);
+    $smtp=json_decode(file_get_contents($private.'/smtp.json'),true,16,JSON_THROW_ON_ERROR);
+    if (!is_array($smtp)) throw new HttpError(503,'mail_not_configured','Email delivery is not configured yet.');
+    $smtp=array_replace(['host'=>'','port'=>465,'encryption'=>'ssl','username'=>'','password'=>'',
+        'from_email'=>'CoffeyTableRecipies@coffeybean.com','from_name'=>'Coffey Table Recipes'],$smtp);
+    return ['firebase_project_id'=>$firebase['firebase_project_id'],
+        'firebase_service_account_file'=>$private.'/firebase-admin.json','smtp'=>$smtp,
+        'app_url'=>'https://coffeybean.com/CoffeyTableRecipes/app/'];
 }

@@ -18,6 +18,7 @@ Worker::$logFile = $runtime.'/ctr-backend.log';
 Worker::$pidFile = $runtime.'/ctr-backend.pid';
 $clients = [];
 $aiJobs ??=new AiJobs();
+$accountJobs ??=new AiJobs([PHP_BINARY,__DIR__.'/account-worker.php'],'Account',85);
 $factory ??= static function (bool $reset=false): ?DataSocket {
     static $service=null;
     if ($reset) { $service=null; return null; }
@@ -76,7 +77,7 @@ $worker->onConnect = static function (TcpConnection $c) use (&$clients): void {
     $c->onBufferFull = static function (TcpConnection $slow): void { $slow->close(); };
     $clients[$c->id] = ['connection'=>$c, 'connected'=>time(), 'last'=>time(), 'rate'=>0, 'window'=>time()];
 };
-$worker->onMessage = static function (TcpConnection $c, string $text) use (&$clients, $factory, $send, $broadcast, $aiJobs,$scheduleImages): void {
+$worker->onMessage = static function (TcpConnection $c, string $text) use (&$clients, $factory, $send, $broadcast, $aiJobs,$scheduleImages,$accountJobs): void {
     $id = null;
     try {
         $m = json_decode($text, true, 32, JSON_THROW_ON_ERROR);
@@ -92,9 +93,10 @@ $worker->onMessage = static function (TcpConnection $c, string $text) use (&$cli
             $scope=$m['scope']??'shopping';
             if (!is_string($scope)) throw new HttpError(422,'invalid_scope','Invalid scope.');
             $service = $factory(); $actor = $service->authenticate($m['token'], $household, $scope);
+            $accountJobs->stop((string)$c->id);
             $entry['scope']=$scope; $entry['actor']=$actor;
             $entry['token']=$m['token']; $entry['household']=$actor['household'];
-            $data=$scope==='ai' ? (object)[] : $service->snapshot($actor);
+            $data=in_array($scope,['ai','account'],true) ? (object)[] : $service->snapshot($actor);
             $send($c, ['type'=>'ready','household_id'=>$entry['household'],'data'=>$data]);
         } else {
             if (!isset($entry['token'])) throw new HttpError(401, 'authentication_required', 'Authenticate first.');
@@ -107,6 +109,15 @@ $worker->onMessage = static function (TcpConnection $c, string $text) use (&$cli
             if (($m['type'] ?? '') !== 'request' || !is_string($id) || strlen($id)>80 || !is_string($m['path'] ?? null)
                 || (isset($m['body']) && !is_array($m['body']))) throw new HttpError(422, 'invalid_message', 'Invalid data request.');
             $body=$m['body'] ?? null;
+            if (AccountService::matches($m['path'])) {
+                if ($entry['scope']!=='account') throw new HttpError(403,'permission_denied','Use an account connection.');
+                if (strlen($text)>128*1024) throw new HttpError(413,'request_too_large','Account request is too large.');
+                $service->authenticate($entry['token'],null,'account');
+                $accountJobs->start((string)$c->id,['token'=>$entry['token'],'path'=>$m['path'],'body'=>$body],
+                    static function(array $event) use ($c,$id,$send): void { $send($c,$event+['id'=>$id]); },static function(){});
+                return;
+            }
+            if ($entry['scope']==='account') throw new HttpError(404,'not_found','Account endpoint not found.');
             if (AiService::matches($m['path']) || AiService::categorizesSave($m['path'],$body)) {
                 if ($entry['scope']!=='ai' && !AiService::categorizesSave($m['path'],$body)) throw new HttpError(403,'permission_denied','Use an AI connection.');
                 if ($entry['scope']==='shopping' || $entry['scope']==='public' || $entry['scope']==='timers') throw new HttpError(403,'permission_denied','AI access denied.');
@@ -134,8 +145,9 @@ $worker->onMessage = static function (TcpConnection $c, string $text) use (&$cli
     catch (PDOException $e) { $factory(true); $send($c,['type'=>'error','id'=>$id,'status'=>503,'error'=>['message'=>'Database connection interrupted. Retry shortly.']]); }
     catch (Throwable $e) { $send($c, ['type'=>'error','id'=>$id,'status'=>503,'error'=>['message'=>'Data synchronization temporarily unavailable.']]); }
 };
-$worker->onClose = static function (TcpConnection $c) use (&$clients,$aiJobs): void { $aiJobs->stop((string)$c->id); unset($clients[$c->id]); };
-$worker->onWorkerStart = static function () use (&$clients,$aiJobs): void {
+$worker->onClose = static function (TcpConnection $c) use (&$clients,$aiJobs,$accountJobs): void { $aiJobs->stop((string)$c->id); $accountJobs->stop((string)$c->id); unset($clients[$c->id]); };
+$worker->onWorkerStart = static function () use (&$clients,$aiJobs,$accountJobs): void {
+    Timer::add(0.1,static fn()=>$accountJobs->poll());
     Timer::add(0.1,static fn()=>$aiJobs->poll());
     Timer::add(5, static function () use (&$clients): void {
         foreach ($clients as $entry) {
