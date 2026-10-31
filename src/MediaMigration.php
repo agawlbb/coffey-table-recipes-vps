@@ -4,7 +4,7 @@ declare(strict_types=1);
 /** One-time URL/key rewrite after verified file transfer; external images stay external. */
 function migrateRecipeMedia(PDO $pdo,array $manifest,string $directory): array {
     $verified=static function(string $name) use($manifest,$directory): void {
-        if (!preg_match('/^(?:(?:[a-f0-9]{48}|[a-f0-9]{64})\.(?:jpg|png|webp)|category-[1-9][0-9]*\.jpg)$/D',$name)) throw new RuntimeException('Unexpected media filename.');
+        if (!preg_match('/^(?:(?:[a-f0-9]{48}|[a-f0-9]{64}|[a-z][a-z0-9-]*-ai-v[1-9][0-9]*)\.(?:jpg|png|webp)|category-[1-9][0-9]*\.jpg)$/D',$name)) throw new RuntimeException('Unexpected media filename.');
         $entry=$manifest['files'][$name]??null; $path=$directory.'/'.$name;
         if (!is_array($entry) || !preg_match('/^[a-f0-9]{64}$/D',$entry['sha256']??'') || is_link($path) || !is_file($path) || hash_file('sha256',$path)!==$entry['sha256']) throw new RuntimeException('A referenced media file has not been verified.');
     };
@@ -15,8 +15,8 @@ function migrateRecipeMedia(PDO $pdo,array $manifest,string $directory): array {
         $count=0;
         foreach ($photos as $photo) {
             $name=null;
-            if (preg_match('#^(?:(?:media|vps)/recipes|media/recipe-photos)/((?:[a-f0-9]{48}|[a-f0-9]{64})\.(?:jpg|png|webp))$#D',$photo['storage_key']??'',$match)) $name=$match[1];
-            elseif (preg_match('#^https?://(?:www\.)?coffeybean\.com/CoffeyTableRecipes/media/(?:recipes|recipe-photos)/((?:[a-f0-9]{48}|[a-f0-9]{64})\.(?:jpg|png|webp))$#D',$photo['source_url']??'',$match)) $name=$match[1];
+            if (preg_match('#^(?:(?:media|vps)/recipes|media/(?:recipe-photos|recipe-illustrations))/((?:[a-f0-9]{48}|[a-f0-9]{64}|[a-z][a-z0-9-]*-ai-v[1-9][0-9]*)\.(?:jpg|png|webp))$#D',$photo['storage_key']??'',$match)) $name=$match[1];
+            elseif (preg_match('#^https?://(?:www\.)?coffeybean\.com/CoffeyTableRecipes/media/(?:recipes|recipe-photos|recipe-illustrations)/((?:[a-f0-9]{48}|[a-f0-9]{64}|[a-z][a-z0-9-]*-ai-v[1-9][0-9]*)\.(?:jpg|png|webp))$#D',$photo['source_url']??'',$match)) $name=$match[1];
             elseif (preg_match('#^https?://(?:www\.)?coffeybean\.com/CoffeyTableRecipes/media/#i',$photo['source_url']??'')) throw new RuntimeException('An owned image URL requires review before migration.');
             if ($name===null) continue;
             $verified($name); $url='https://ctr.coffeybean.com/media/recipes/'.$name; $key='vps/recipes/'.$name;

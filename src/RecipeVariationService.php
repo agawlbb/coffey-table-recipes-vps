@@ -30,7 +30,7 @@ final class RecipeVariationService
         $cover ??= $photos[0] ?? null;
         if (!is_array($cover)) return null;
         $key=$cover['storage_key'] ?? '';
-        if (!is_string($key) || !preg_match('#^(?:media|vps)/recipes/(?:[a-f0-9]{48}|[a-f0-9]{64})\.(?:jpg|png|webp)$#D',$key)) return null;
+        if (!is_string($key) || !preg_match('#^(?:media|vps)/recipes/(?:[a-f0-9]{48}|[a-f0-9]{64}|[a-z][a-z0-9-]*-ai-v[1-9][0-9]*)\.(?:jpg|png|webp)$#D',$key)) return null;
         if ($this->coverReader!==null) {
             $bytes=($this->coverReader)($key);
         } else {
