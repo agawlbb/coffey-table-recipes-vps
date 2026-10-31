@@ -1,0 +1,138 @@
+[
+  {
+    "value": "https://example.com/recipe",
+    "url": "https://example.com/recipe"
+  },
+  {
+    "value": "http://example.com:8080/r?q=1&x=2#method",
+    "url": "http://example.com:8080/r?q=1&x=2#method"
+  },
+  {
+    "value": "www.example.com/recipe",
+    "url": "https://www.example.com/recipe"
+  },
+  {
+    "value": "example.co.uk",
+    "url": "https://example.co.uk"
+  },
+  {
+    "value": "example.com:8443/recipe",
+    "url": "https://example.com:8443/recipe"
+  },
+  {
+    "value": "https://example.com/?author=O'Reilly&x=1",
+    "url": "https://example.com/?author=O'Reilly&x=1"
+  },
+  {
+    "value": "https://example.com/a%20b",
+    "url": "https://example.com/a%20b"
+  },
+  {
+    "value": "HTTPS://EXAMPLE.COM/Recipe",
+    "url": "https://example.com/Recipe"
+  },
+  {
+    "value": "",
+    "url": null
+  },
+  {
+    "value": "Family cookbook",
+    "url": null
+  },
+  {
+    "value": "recipe.pdf",
+    "url": null
+  },
+  {
+    "value": "person@example.com",
+    "url": null
+  },
+  {
+    "value": "javascript:alert(1)",
+    "url": null
+  },
+  {
+    "value": "javascript:https://example.com",
+    "url": null
+  },
+  {
+    "value": "data:text/html,<script>alert(1)</script>",
+    "url": null
+  },
+  {
+    "value": "mailto:person@example.com",
+    "url": null
+  },
+  {
+    "value": "ftp://example.com/a",
+    "url": null
+  },
+  {
+    "value": "file:///etc/passwd",
+    "url": null
+  },
+  {
+    "value": "//example.com",
+    "url": null
+  },
+  {
+    "value": "https:example.com",
+    "url": null
+  },
+  {
+    "value": "https://",
+    "url": null
+  },
+  {
+    "value": "http:///example.com",
+    "url": null
+  },
+  {
+    "value": "https://bad_host.example.com",
+    "url": null
+  },
+  {
+    "value": "https://example..com",
+    "url": null
+  },
+  {
+    "value": "https://-bad.example.com",
+    "url": null
+  },
+  {
+    "value": "https://example.com:70000",
+    "url": null
+  },
+  {
+    "value": "https://example.com:0",
+    "url": null
+  },
+  {
+    "value": "https://user:pass@example.com",
+    "url": null
+  },
+  {
+    "value": "https://example.com\\evil",
+    "url": null
+  },
+  {
+    "value": "https://example.com/%0aevil",
+    "url": null
+  },
+  {
+    "value": "https://example.com/%zz",
+    "url": null
+  },
+  {
+    "value": "https://example.com/\"onclick=\"alert(1)",
+    "url": null
+  },
+  {
+    "value": "https://example.com/<script>",
+    "url": null
+  },
+  {
+    "value": "https://example.com/a b",
+    "url": null
+  }
+]

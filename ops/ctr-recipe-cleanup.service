@@ -1,0 +1,8 @@
+[Unit]
+Description=Purge expired Coffey Table recipe trash
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/docker exec ctr-backend php /app/bin/purge-deleted-recipes.php

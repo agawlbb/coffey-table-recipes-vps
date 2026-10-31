@@ -1,0 +1,10 @@
+[Unit]
+Description=Daily Coffey Table recipe trash cleanup
+
+[Timer]
+OnCalendar=*-*-* 03:15:00 UTC
+Persistent=true
+Unit=ctr-recipe-cleanup.service
+
+[Install]
+WantedBy=timers.target

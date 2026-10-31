@@ -5,7 +5,7 @@ declare(strict_types=1);
 final class MealPlanService
 {
     public function __construct(private PDO $pdo, private HouseholdService $households,
-        private string $mediaUrl = 'https://coffeybean.com/CoffeyTableRecipes/media/recipes',
+        private string $mediaUrl = 'https://ctr.coffeybean.com/media/recipes',
         private ?Closure $clock = null) {}
 
     private function rows(string $sql, array $args = []): array {
@@ -53,7 +53,7 @@ final class MealPlanService
         foreach ($entries as &$entry) {
             $entry['available'] = (bool)$entry['available'];
             if ($entry['current_title'] !== null && ($entry['plan_date'] === null || $entry['plan_date'] >= $this->today($state))) $entry['title']=$entry['current_title'];
-            if (preg_match('#^media/recipes/([a-f0-9]{48}\.(?:jpg|png|webp))$#', (string)($entry['photo_storage_key'] ?? ''), $match)) $entry['photo_url']=rtrim($this->mediaUrl,'/').'/'.$match[1];
+            if (preg_match('#^(?:media|vps)/recipes/((?:[a-f0-9]{48}|[a-f0-9]{64}|[a-z][a-z0-9-]*-ai-v[1-9][0-9]*)\.(?:jpg|png|webp))$#', (string)($entry['photo_storage_key'] ?? ''), $match)) $entry['photo_url']=rtrim($this->mediaUrl,'/').'/'.$match[1];
             foreach (['household_id','current_title','photo_storage_key','created_at'] as $key) unset($entry[$key]);
             foreach (['recipe_id','recipe_identity'] as $key) if ($entry[$key] !== null) $entry[$key]=(string)$entry[$key];
         } unset($entry);
@@ -118,7 +118,7 @@ final class MealPlanService
             WHERE (p.recipe_id=? OR p.paired_recipe_id=?) AND r.deleted_at IS NULL ORDER BY r.title,r.id',[$id,$household,$id,$id]);
         foreach ($rows as &$row) {
             $row['id']=(string)$row['id'];
-            if (preg_match('#^media/recipes/([a-f0-9]{48}\.(?:jpg|png|webp))$#',(string)($row['photo_storage_key'] ?? ''),$match)) $row['photo_url']=rtrim($this->mediaUrl,'/').'/'.$match[1];
+            if (preg_match('#^(?:media|vps)/recipes/((?:[a-f0-9]{48}|[a-f0-9]{64}|[a-z][a-z0-9-]*-ai-v[1-9][0-9]*)\.(?:jpg|png|webp))$#',(string)($row['photo_storage_key'] ?? ''),$match)) $row['photo_url']=rtrim($this->mediaUrl,'/').'/'.$match[1];
             unset($row['photo_storage_key']);
         }
         return ['recipes'=>$rows];

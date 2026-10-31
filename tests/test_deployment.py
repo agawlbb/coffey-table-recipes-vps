@@ -17,16 +17,16 @@ class DeploymentTests(unittest.TestCase):
             source = Path(directory) / 'source'
             home = Path(directory) / 'backend'
             code = home / 'code'
-            for name in ('src/ShoppingSocket.php', 'vendor/autoload.php', 'bootstrap.php',
+            for name in ('bin/purge-deleted-recipes.php', 'associations/assetlinks.json', 'associations/apple-app-site-association', 'src/ShoppingSocket.php', 'vendor/autoload.php', 'bootstrap.php',
                          'server.php', 'ai-worker.php', 'account-worker.php', 'assets/email/coffey_table.jpg', 'composer.lock', 'compose.yaml', 'backend.caddy'):
                 path = source / name
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_text('fixture')
-            for name in ('private/database.json', 'private/firebase.json', 'private/timer-push.json', 'private/recipe-ai.local.json', 'private/smtp.json', 'private/firebase-admin.json', 'private/child-mode-sql-import.json',
+            for name in ('private/database.json', 'private/firebase.json', 'private/timer-push.json', 'private/recipe-ai.local.json', 'private/smtp.json', 'private/firebase-admin.json', 'private/child-mode-sql-import.json', 'private/home-assistant.json', 'private/media-migration.json',
                          'state/pending.json', 'state/media/recipes/photo.jpg', 'code/obsolete.php'):
                 path = home / name
                 path.parent.mkdir(parents=True, exist_ok=True)
-                path.write_text('keep')
+                path.write_text('{"references_updated":true}' if name.endswith('media-migration.json') else 'keep')
             with patch.object(deploy, 'ROOT', source), patch.object(deploy, 'HOME', home), \
                  patch.object(deploy, 'CODE', code), patch.object(deploy, 'run') as run, \
                  patch.object(deploy, 'verify_cpu_policy') as verify_cpu:
@@ -68,8 +68,8 @@ class DeploymentTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             (root / 'private').mkdir()
-            for name in ('database.json', 'firebase.json', 'timer-push.json', 'recipe-ai.local.json', 'smtp.json', 'firebase-admin.json', 'child-mode-sql-import.json'):
-                (root / 'private' / name).write_text('fixture')
+            for name in ('database.json', 'firebase.json', 'timer-push.json', 'recipe-ai.local.json', 'smtp.json', 'firebase-admin.json', 'child-mode-sql-import.json', 'home-assistant.json', 'media-migration.json'):
+                (root / 'private' / name).write_text('{"references_updated":true}' if name == 'media-migration.json' else 'fixture')
             with patch.object(deploy, 'ROOT', root), patch.object(deploy, 'HOME', root), \
                  patch.object(deploy, 'run') as run:
                 with self.assertRaisesRegex(RuntimeError, 'composer install'):
@@ -81,7 +81,7 @@ class DeploymentTests(unittest.TestCase):
             root = Path(directory)
             (root / 'private').mkdir()
             for name in ('database.json', 'firebase.json', 'timer-push.json', 'recipe-ai.local.json'):
-                (root / 'private' / name).write_text('fixture')
+                (root / 'private' / name).write_text('{"references_updated":true}' if name == 'media-migration.json' else 'fixture')
             with patch.object(deploy, 'HOME', root), patch.object(deploy, 'run') as run:
                 with self.assertRaisesRegex(RuntimeError, 'smtp.json'):
                     deploy.deploy()

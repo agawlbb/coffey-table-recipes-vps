@@ -10,6 +10,25 @@ class DataWireTests(unittest.IsolatedAsyncioTestCase):
     connect = shopping.ShoppingWireTests.connect
     message = shopping.ShoppingWireTests.message
 
+    async def test_rendered_recipe_and_association_http_responses(self):
+        base=f'http://127.0.0.1:{self.media_port}'
+        async with self.session.get(base+'/recipes/1') as response:
+            self.assertEqual(response.status,200)
+            content=await response.read()
+            self.assertIn(b'https://ctr.coffeybean.com/recipes/1',content)
+            self.assertNotIn(b'PRIVATE SOURCE',content)
+            self.assertEqual(len(response.headers.getall('Content-Length')),1)
+        async with self.session.head(base+'/recipes/1') as response:
+            self.assertEqual(response.status,200)
+            self.assertEqual(int(response.headers['Content-Length']),len(content))
+            self.assertEqual(await response.read(),b'')
+        async with self.session.get(base+'/recipes/999') as response:
+            self.assertEqual(response.status,404)
+        for name in ('assetlinks.json','apple-app-site-association'):
+            async with self.session.get(base+'/.well-known/'+name) as response:
+                self.assertEqual(response.status,200)
+                await response.json()
+
     async def auth(self, ws, scope='household', token='alice', household='1'):
         await ws.send_json(dict(v=1, type='auth', scope=scope, token=token, household_id=household))
         return await self.message(ws)
@@ -75,10 +94,10 @@ class DataWireTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((await self.request(public, '/recipes/1'))['data']['recipe']['title'], 'Soup')
         self.assertEqual((await self.request(public, '/recipes/1', dict(title='forged')))['status'], 404)
 
-    async def test_new_uploads_are_persistent_and_old_photo_urls_still_work(self):
+    async def test_new_uploads_and_existing_managed_photos_use_vps_media(self):
         await self.auth(self.app)
         old = await self.request(self.app, '/households/1/recipes/1')
-        self.assertEqual(old['data']['recipe']['photos'][0]['source_url'], 'https://coffeybean.com/CoffeyTableRecipes/media/recipes/' + 'a'*48 + '.jpg')
+        self.assertEqual(old['data']['recipe']['photos'][0]['source_url'], 'https://ctr.coffeybean.com/media/recipes/' + 'a'*48 + '.jpg')
         import base64
         from pathlib import Path
         image = base64.b64decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jFuoAAAAASUVORK5CYII=')
@@ -101,5 +120,8 @@ class DataWireTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(response.headers.get('Access-Control-Allow-Origin'), '*')
             self.assertEqual(response.headers.get('X-Content-Type-Options'), 'nosniff')
             self.assertEqual(await response.read(), image)
+        async with self.session.head(f'http://127.0.0.1:{self.media_port}' + path) as response:
+            self.assertEqual(int(response.headers['Content-Length']),len(image))
+            self.assertEqual(await response.read(),b'')
         async with self.session.get(f'http://127.0.0.1:{self.media_port}/private/database.json') as response:
             self.assertEqual(response.status, 404)

@@ -1,0 +1,45 @@
+<?php
+declare(strict_types=1);
+require __DIR__.'/fixtures/account.php';
+$pdo=new AccountFixturePDO('sqlite::memory:'); $pdo->setAttribute(PDO::ATTR_ERRMODE,PDO::ERRMODE_EXCEPTION); accountSchema($pdo);
+$account=accountFixture($pdo); $checks=0;
+function remainingCheck(bool $ok):void { global $checks; if(!$ok) throw new RuntimeException('Remaining account behavior failed'); $checks++; }
+function remainingReject(callable $call,int $status):void {try{$call();}catch(HttpError $e){remainingCheck($e->status===$status);return;}throw new RuntimeException('Expected rejection');}
+$owner=$account->handle('new','/me',null)['user'];
+$household=$account->handle('new','/households',['name'=>'Table','person_name'=>'Owner'])['household'];
+remainingReject(fn()=>$account->handle('new','/admin/users',null),403);
+$listed=$account->handle('admin','/admin/users',null);
+remainingCheck(count($listed['users'])===4 && count($listed['households'])===1);
+remainingReject(fn()=>$account->handle('admin','/admin/households/'.$household['id'].'/ai-images',['enabled'=>'true']),422);
+remainingCheck($account->handle('admin','/admin/households/'.$household['id'].'/ai-images',['enabled'=>true])['household']['ai_images_enabled']);
+remainingReject(fn()=>$account->handle('new','/admin/households/'.$household['id'].'/ai-images',['enabled'=>false]),403);
+$connection=$account->handle('new','/households/'.$household['id'].'/home-assistant-connections',[]);
+remainingCheck(str_starts_with($connection['token'],'ctrha_'));
+$connections=$account->handle('new','/households/'.$household['id'].'/home-assistant-connections',null)['connections'];
+remainingCheck(count($connections)===1 && !isset($connections[0]['token']));
+remainingReject(fn()=>$account->handle('guest','/households/'.$household['id'].'/home-assistant-connections',null),404);
+$account->handle('new','/households/'.$household['id'].'/home-assistant-connections/'.$connections[0]['id'],[]);
+remainingReject(fn()=>(new HomeAssistantConnections($pdo))->household($connection['token']),401);
+$guest=$account->handle('guest','/me',null)['user'];
+$pdo->prepare('INSERT INTO household_people(household_id,user_id,display_name) VALUES(?,?,?)')->execute([$household['id'],$guest['id'],'Guest']);
+$pdo->prepare('INSERT INTO household_memberships VALUES(?,?,?)')->execute([$household['id'],$guest['id'],'member']);
+$pdo->prepare("INSERT INTO recipes(title,household_id,created_by_user_id,updated_by_user_id) VALUES('Shared',?,?,?)")->execute([$household['id'],$guest['id'],$guest['id']]);
+remainingReject(fn()=>$account->handle('admin','/admin/users/'.$guest['id'].'/delete',[]),422);
+remainingCheck($account->handle('admin','/admin/users/'.$guest['id'].'/delete',['confirm'=>true])['deleted']);
+remainingCheck($pdo->query("SELECT COUNT(*) FROM users WHERE firebase_uid='guest'")->fetchColumn()==0);
+$recipe=$pdo->query('SELECT * FROM recipes')->fetch(PDO::FETCH_ASSOC);
+remainingCheck($recipe['title']==='Shared' && $recipe['created_by_user_id']===null && $recipe['updated_by_user_id']===null);
+remainingCheck(count((new HouseholdService($pdo))->households($owner['id']))===1);
+remainingReject(fn()=>$account->handle('child','/admin/users/'.$owner['id'].'/delete',['confirm'=>true]),403);
+$pdo->exec("INSERT INTO users(firebase_uid,display_name,email) VALUES('protected','Protected','protected@example.test')");
+$protected=(string)$pdo->lastInsertId();
+$pdo->prepare('INSERT INTO household_memberships VALUES(?,?,?)')->execute([$household['id'],$protected,'member']);
+remainingReject(fn()=>$account->handle('admin','/admin/users/'.$protected.'/delete',['confirm'=>true]),503);
+remainingCheck($pdo->query("SELECT COUNT(*) FROM users WHERE firebase_uid='protected'")->fetchColumn()==1);
+remainingCheck($pdo->query('SELECT COUNT(*) FROM household_memberships WHERE user_id='.$protected)->fetchColumn()==1);
+$pdo->prepare('INSERT INTO household_people(household_id,display_name) VALUES(?,?)')->execute([$household['id'],'Unlinked']);
+$person=(string)$pdo->lastInsertId();
+remainingCheck($account->handle('admin','/admin/people/'.$person.'/delete',['confirm'=>true])['deleted']);
+remainingCheck($pdo->query('SELECT COUNT(*) FROM household_people WHERE id='.$person)->fetchColumn()==0);
+remainingCheck($account->handle('admin','/admin/firebase/firebase_only/delete',['confirm'=>true])['deleted']);
+echo "$checks remaining admin/HA checks passed without external services.\n";

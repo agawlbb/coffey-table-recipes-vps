@@ -5,10 +5,9 @@ try {
     $request=json_decode(stream_get_contents(STDIN,128*1024+1),true,32,JSON_THROW_ON_ERROR);
     $pdo ??=runtimeDatabase(); $verify ??=runtimeVerifier();
     if (!isset($account)) {
-        $config=runtimeAccountConfig(); $directory=new FirebaseAccountDirectory($config);
-        $account=new AccountService($pdo,$verify,[$directory,'requireAccount'],
-            [$directory,'lookup'],[new InvitationMail($config),'send'],[$directory,'verificationLink'],
-            [new VerificationMail($config),'send'],$config['app_url']);
+        $account=runtimeAccountService($pdo,$verify,static function(string $message):void {
+            echo json_encode(['type'=>'progress','message'=>$message],JSON_THROW_ON_ERROR)."\n"; flush();
+        });
     }
     $data=$account->handle($request['token'],$request['path'],$request['body']);
     echo json_encode(['type'=>'response','data'=>$data],JSON_THROW_ON_ERROR|JSON_INVALID_UTF8_SUBSTITUTE)."\n";

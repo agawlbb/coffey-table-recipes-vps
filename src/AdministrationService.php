@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 final class AdministrationService
 {
-    public function __construct(private PDO $pdo, private $deleteFirebase, private $listFirebase = null, private ?CategoryImageService $categoryImages = null, private string $mediaUrl = 'https://coffeybean.com/CoffeyTableRecipes/media/recipes') {}
+    public function __construct(private PDO $pdo, private $deleteFirebase, private $listFirebase = null, private ?CategoryImageService $categoryImages = null, private string $mediaUrl = 'https://ctr.coffeybean.com/media/recipes') {}
 
     public function requireAdministrator(string $actorId): void
     {

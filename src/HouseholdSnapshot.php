@@ -64,7 +64,7 @@ final class HouseholdSnapshot {
                 foreach ($children as $key=>$grouped) $recipe[$key]=$grouped[$id] ?? [];
                 $recipe['nutrition']=$recipe['nutrition'][0] ?? null;
                 if ($recipe['nutrition']!==null) $recipe['nutrition']['stale']=$recipe['nutrition']['recipe_revision']!==$recipe['revision'];
-                foreach ($recipe['photos'] as &$photo) if (preg_match('#^media/recipes/([a-f0-9]{48}\\.(?:jpg|png|webp))$#',$photo['storage_key'] ?? '',$m)) $photo['source_url']=rtrim($this->mediaUrl,'/').'/'.$m[1];
+                foreach ($recipe['photos'] as &$photo) if (preg_match('#^(?:media|vps)/recipes/((?:[a-f0-9]{48}|[a-f0-9]{64}|[a-z][a-z0-9-]*-ai-v[1-9][0-9]*)\\.(?:jpg|png|webp))$#',$photo['storage_key'] ?? '',$m)) $photo['source_url']=rtrim($this->mediaUrl,'/').'/'.$m[1];
                 unset($photo);
                 $recipe['photo_url']=null;
                 foreach ($recipe['photos'] as $photo) {
