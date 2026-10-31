@@ -8,8 +8,8 @@ read-only connections serve public recipe links. The persistent MySQL database
 stays on InMotion. Account bootstrap, household setup, verification mail and
 invitations use the account WebSocket scope; see [ACCOUNT-WEBSOCKET.md](ACCOUNT-WEBSOCKET.md).
 Child-mode policy, PIN changes and administrator resets use the SQL-backed VPS
-account scope; see [CHILD-MODE-SQL.md](CHILD-MODE-SQL.md). Other account administration remains in the separate
-[InMotion repository](https://github.com/agawlbb/coffey-table-recipes-server).
+account scope; see [CHILD-MODE-SQL.md](CHILD-MODE-SQL.md). Remaining administration, Home Assistant setup, public recipe pages and managed images
+now run here; see [REMAINING-PHP.md](REMAINING-PHP.md) for the one-time cutover.
 
 AI imports, clarification turns, variations and image generation also use this
 endpoint; see [AI-WEBSOCKET.md](AI-WEBSOCKET.md) for the matching working branches,
@@ -40,9 +40,9 @@ SMTP relay settings in `private/smtp.json` and account credential in
 Credentials remain in `/opt/services/ctr-backend/private/`, and persistent state
 in `/opt/services/ctr-backend/state/`. Both are outside Git and are preserved.
 Routine source changes do not rebuild the runtime image or run schema/import jobs.
-New uploaded photos live in `state/media/recipes/`; existing InMotion photo URLs
-remain valid. Deployment also copies this repository's `backend.caddy` site and
-reloads Caddy to serve the new photos through the service's restricted media
+Managed photos and category artwork live in `state/media/recipes/`. The one-time
+verified transfer must finish before this cutover is deployed. Deployment also copies this repository's `backend.caddy` site and
+reloads Caddy to serve the new photos through the service's restricted HTTP
 listener. No database migration, image build or app deployment is included.
 Production uses CPU shares 1024 with no hard CPU quota, allowing idle CPU use.
 Deployment verifies Docker CpuShares and effective cgroup cpu.max after restart.

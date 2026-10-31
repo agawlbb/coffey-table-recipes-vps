@@ -27,4 +27,14 @@ $jobs->start('account',[],function($event) use (&$events){$events[]=$event;},sta
 finishJob($jobs,$events);
 jobCheck(end($events)['error']['code']==='account_interrupted');
 jobCheck(str_starts_with(end($events)['error']['message'],'Account'));
-echo "AI worker crash recovery, duplicate-run protection and cancellation passed\n";
+$events=[]; $finished=[];
+$jobs=new AiJobs([PHP_BINARY,'-r','stream_get_contents(STDIN); usleep(200000); echo "{\"type\":\"response\",\"data\":{}}\n";']);
+$jobs->start('same-socket',[],function($e)use(&$events){$events[]=$e;},function($ok)use(&$finished){$finished[]=$ok;},true);
+$jobs->disconnect('same-socket');
+// Reauthentication must be able to use the original key while mutation completes.
+$jobs->start('same-socket',[],static function(){},static function(){});
+$deadline=microtime(true)+2;
+while(!$finished && microtime(true)<$deadline){$jobs->poll();usleep(10000);}
+jobCheck($finished===[true] && count($events)===1);
+$jobs->stop('same-socket');
+echo "AI/account worker crash recovery, duplicate-run protection, cancellation and detached mutation completion passed\n";

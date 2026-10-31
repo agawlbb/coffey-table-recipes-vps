@@ -6,7 +6,7 @@ final class AiJobs {
     private array $jobs=[];
     public function __construct(private array $command=[PHP_BINARY,__DIR__.'/../ai-worker.php'], private string $label='AI', private int $timeout=600) {}
 
-    public function start(string $key,array $request,callable $emit,callable $done): void {
+    public function start(string $key,array $request,callable $emit,callable $done,bool $finishOnDisconnect=false): void {
         if (isset($this->jobs[$key]) || count($this->jobs)>=4) throw new HttpError(409,$this->label==='AI'?'ai_busy':'account_busy',$this->label.' request is already running. Please wait.');
         $process=proc_open($this->command,[0=>['pipe','r'],1=>['pipe','w'],2=>['file','/dev/null','a']],$pipes);
         if (!is_resource($process)) throw new RuntimeException('Cannot start AI worker');
@@ -17,7 +17,7 @@ final class AiJobs {
             $offset+=$written;
         }
         fclose($pipes[0]); stream_set_blocking($pipes[1],false);
-        $this->jobs[$key]=['process'=>$process,'pipe'=>$pipes[1],'buffer'=>'','started'=>microtime(true),'last'=>microtime(true),'emit'=>$emit,'done'=>$done,'message'=>'Preparing the request…'];
+        $this->jobs[$key]=['process'=>$process,'pipe'=>$pipes[1],'buffer'=>'','started'=>microtime(true),'last'=>microtime(true),'emit'=>$emit,'done'=>$done,'message'=>'Preparing the request…','finish_on_disconnect'=>$finishOnDisconnect];
         $emit(['type'=>'progress','message'=>'Preparing the request…','elapsed_seconds'=>0]);
     }
 
@@ -50,6 +50,16 @@ final class AiJobs {
     private function fail(string $key,string $message): void {
         ($this->jobs[$key]['emit'])(['type'=>'error','status'=>503,'error'=>['code'=>$this->label==='AI'?'ai_interrupted':'account_interrupted','message'=>$message]]);
         $done=$this->jobs[$key]['done']; $this->stop($key); $done(false);
+    }
+
+    public function disconnect(string $key): void {
+        if (!isset($this->jobs[$key])) return;
+        if (!$this->jobs[$key]['finish_on_disconnect']) { $this->stop($key); return; }
+        // A confirmed mutation may already have changed Firebase. Let its SQL
+        // cleanup finish, but never deliver an old identity's response after reauth.
+        $this->jobs[$key]['emit']=static function(){};
+        $this->jobs['detached-'.$key.'-'.bin2hex(random_bytes(4))]=$this->jobs[$key];
+        unset($this->jobs[$key]);
     }
 
     public function stop(string $key): void {

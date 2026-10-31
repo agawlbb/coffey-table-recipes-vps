@@ -1,0 +1,16 @@
+{
+  "applinks": {
+    "details": [
+      {
+        "appIDs": [
+          "FKR675M7PM.com.coffeytable.coffeyTableRecipes"
+        ],
+        "components": [
+          {
+            "/": "/recipes/*"
+          }
+        ]
+      }
+    ]
+  }
+}
