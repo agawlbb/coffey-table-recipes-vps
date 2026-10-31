@@ -2,7 +2,7 @@
 
 Branch: `feature/vps-remaining-php`, based on VPS main `1257a92`.
 Matching branches exist in the Flutter, shared-host and Home Assistant repositories.
-Source prepared only: no deployment, media transfer, scheduler installation or app build performed.
+The VPS source is deployed for feature testing; see the deployment record below.
 Do not merge until the user approves.
 
 ## Service layout
@@ -108,3 +108,46 @@ Verified on 2026-10-31 through `dev exec`:
 - PHP syntax lint and `git diff --check` passed. Fixture translation does not
   test MySQL locking/concurrency. Live deployment/media cutover, SMTP, scheduler
   execution and installed-device association checks remain for authorized rollout.
+
+## Feature deployment — 2026-10-31
+
+User authorized deploying this VPS branch and building a matching Android test APK.
+Deployed runtime source: `03aa403d169ede87f0395805e702f65bc9199e44`.
+Main and the existing runtime image were unchanged. No rollback archive was made.
+
+Live preflight identified all three original image directories: `media/recipes`,
+`media/recipe-photos` and `media/recipe-illustrations`. Existing data includes
+48-digit and 64-digit photo names and two named AI illustrations. Migration,
+serving, cover reuse, cleanup and cached app image URLs handle these formats.
+Focused PHP regressions and 22 app API tests passed after these corrections;
+changed Dart analysis passed. The shared-host transfer-tool suite passed 8 tests.
+
+The 1 MB cPanel editor limit required a temporary CLI-only export for four larger
+images. Exported bytes were compared with original-file SHA-256 values, and the
+shared-host helper independently rechecked source hashes before removing its own
+generated export files. Its exact temporary cron was removed. No original images
+were deleted. The normal verified transfer receipt is stored privately on the VPS.
+There are 83 verified VPS image files. The SQL transaction updated 59 photo records;
+all 65 owned photo records now use VPS URLs/keys, with no old owned-image URLs left.
+All 19 AI category image references were verified, preserving existing VPS artwork.
+
+The existing HA client configuration was copied to private `home-assistant.json`
+(mode 600). Existing database, Firebase, SMTP and AI credentials were reused.
+The exact old InMotion recipe cleanup cron was removed; the unrelated job remains.
+`ctr-recipe-cleanup.timer` is enabled and active, next due 2026-11-01 03:15 UTC.
+The cleanup service was not manually run against real data for a development test.
+
+Live read-only verification passed:
+
+- 53 installed runtime/association source files match the feature checkout.
+- Health, recipe GET/HEAD length, missing-recipe 404, both association JSON files,
+  HA public configuration, rejection of unauthenticated HA household reads and
+  private-path protection.
+- All 83 images fetched over public HTTPS match the private manifest hashes.
+- Public WebSocket recipe read and heartbeat through the real Caddy endpoint.
+- `CpuShares=1024` and `cpu.max=max 100000`; existing limits/security retained.
+
+MySQL, SMTP and static Flutter hosting remain on InMotion. The shared-host PHP
+retirement branch and Home Assistant integration update were not deployed by this
+request. Original images are retained while the feature is tested. SMTP recipient
+delivery, signed-in administration and physical-device behavior remain user tests.
