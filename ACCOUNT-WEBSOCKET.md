@@ -3,7 +3,7 @@
 The `feature/vps-account-auth` branches in the app, InMotion and VPS repositories
 move account bootstrap, first household creation, verification mail and invitations
 to `wss://ctr.coffeybean.com/shopping`. Bases: app `6a4227a`, InMotion `42ab625`,
-VPS `287dc4d`. These branches are source work, not a production deployment.
+VPS `287dc4d`. The test deployment is recorded below; the branches remain unmerged.
 
 Firebase still handles password/Google authentication, refresh tokens and password
 resets. The app sends Firebase ID tokens, never passwords, to the VPS. No screen or
@@ -69,7 +69,31 @@ Do not deploy the InMotion retirement alone: the installed older app still uses 
 Offline validation uses disposable SQLite, signed test JWTs, fake Firebase/mail
 callbacks and real loopback WebSockets. It does not prove live SMTP authentication,
 Firebase permissions, inbox delivery or the published app's sign-in. Those remain
-deployment checks. No real messages were sent by the tests.
+deployment checks. No real messages were sent by the tests. The deployment access
+checks below cover SMTP authentication and Firebase lookup, not actual delivery.
+
+## Test deployment, 2026-10-31
+
+The user requested deploying this branch and building an Android test APK.
+Deployed VPS runtime source: `cecdda0d116ed3c27ff785b71369474f679f8495`.
+Reused the InMotion SMTP settings and the existing account credential selected by
+its local configuration, copying them once into the private paths above with mode
+600. Project binding matched the existing VPS Firebase selector; no keys were
+created or logged. InMotion's runtime and the hosted app were not deployed.
+
+`python3 deploy.py` copied source/dependencies and restarted `ctr-backend`.
+All 47 deployed PHP, lock and mail-asset file hashes matched this source checkout.
+CPU shares remained 1024 and effective `cpu.max` was `max 100000`. The existing
+runtime image was reused; no rollback image or release directory was created.
+
+Live checks passed: Firebase account lookup with a reserved nonexistent recipient;
+SMTP TLS connection and authentication, followed by QUIT without sending mail;
+public account WebSocket rejection of an invalid token (401); and public-scope
+readiness/heartbeat. An email-action request with `returnOobLink=true` and the same
+nonexistent recipient returned HTTP 400 `USER_NOT_FOUND`, rather than a permission
+denial. No real user, verification link or email was created by these probes.
+Fresh-user signup, real recipient delivery and signed-in device behavior remain
+for the requested Android test. Child-mode policy still comes from InMotion.
 
 ## Verified on this branch
 
