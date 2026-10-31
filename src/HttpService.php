@@ -73,8 +73,9 @@ final class HttpService {
         }
     }
     private function database(): PDO {
-        if ($this->pdo instanceof Closure) $this->pdo=($this->pdo)();
-        return $this->pdo;
+        // The HTTP worker outlives MySQL's idle timeout. Keep the factory, not
+        // an idle connection, so the next page gets a usable connection.
+        return $this->pdo instanceof Closure ? ($this->pdo)() : $this->pdo;
     }
     private function readOnly(string $method): void {
         if (!in_array($method,['GET','HEAD'],true)) throw new HttpError(405,'method_not_allowed','Use GET.');

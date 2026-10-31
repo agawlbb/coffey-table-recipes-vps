@@ -151,3 +151,23 @@ MySQL, SMTP and static Flutter hosting remain on InMotion. The shared-host PHP
 retirement branch and Home Assistant integration update were not deployed by this
 request. Original images are retained while the feature is tested. SMTP recipient
 delivery, signed-in administration and physical-device behavior remain user tests.
+
+## Rendered-page idle connection fix — 2026-10-31
+
+A transient rendered-page 503 was reported and subsequently cleared. A restart
+could explain that particular interruption; it was not conclusively attributed
+to the separate idle-connection defect found during investigation.
+
+The long-running HTTP service was replacing its database factory with the first
+PDO connection. The hosted database's observed session idle timeout is 300 seconds,
+so a later page request could fail against the expired connection. Rendered-page
+requests now call the factory for a fresh connection. Static image, association
+and health requests still require no database connection. No retries, connection
+pool, schema changes or app build are introduced.
+
+The disposable regression expires the first successful page's connection and
+opens the next page through a fresh connection. It failed before the fix and
+passed afterward. `php tests/http.php` passed 34 checks; the four real loopback
+`data_websocket.py` tests passed, including rendered-page GET/HEAD and images.
+Changed PHP syntax and `git diff --check` passed. Existing live recipe records
+also rendered successfully in read-only inspection before deploying this fix.

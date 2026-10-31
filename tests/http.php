@@ -28,7 +28,24 @@ $service=new HttpService($pdo,fn()=>$account,fn()=>['api_key'=>'public-fixture']
 $checks=0;
 function httpCheck(bool $ok):void {global $checks;if(!$ok)throw new RuntimeException('HTTP migration regression at check '.($checks+1));$checks++;}
 function httpJson(array $response):array {return json_decode($response['body'],true,32,JSON_THROW_ON_ERROR);}
+// Model a connection that the server closes while the HTTP worker is idle.
+final class ExpiringPagePDO extends PDO {
+    public bool $expired=false;
+    public function __construct(private PDO $fixture) {}
+    public function prepare(string $query,array $options=[]): PDOStatement|false {
+        if ($this->expired) throw new PDOException('MySQL server has gone away');
+        return $this->fixture->prepare($query,$options);
+    }
+}
 try {
+    $firstConnection=new ExpiringPagePDO($pdo); $connections=0;
+    $factory=static function()use(&$connections,$firstConnection,$pdo):PDO {
+        return ++$connections===1?$firstConnection:$pdo;
+    };
+    $pages=new HttpService($factory,fn()=>$account,fn()=>[],$directory,dirname(__DIR__).'/associations');
+    httpCheck($pages->handle('GET','/recipes/1')['status']===200);
+    $firstConnection->expired=true;
+    httpCheck($pages->handle('GET','/recipes/1')['status']===200);
     $static=new HttpService(static function(){throw new RuntimeException('Static requests must not connect to MySQL');},static function(){throw new RuntimeException('No account request expected');},fn()=>['api_key'=>'public-fixture'],$directory,dirname(__DIR__).'/associations');
     httpCheck($static->handle('GET','/health')['status']===200);
     httpCheck($static->handle('GET','/.well-known/assetlinks.json')['status']===200);
