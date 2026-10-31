@@ -19,7 +19,7 @@ $transport=static function(array $payload) use (&$payloads,&$failure,&$malformed
     if ($malformed) return ['status'=>200,'body'=>json_encode(['status'=>'completed','output'=>[]])];
     if (($payload['text']['format']['name']??'')==='recipe_chat') {
         $latest=$payload['input'][count($payload['input'])-1]['content'];
-        $result=['message'=>str_contains($latest,'What if')?'Removing eggs would weaken the structure. I have kept them in the recipe.':'Here is a practical soup. You can keep refining it or review when ready.',
+        $result=['show_recipe'=>false,'message'=>str_contains($latest,'What if')?'Removing eggs would weaken the structure. I have kept them in the recipe.':'Here is a practical soup. You can keep refining it or review when ready.',
             'context_updates'=>[],'ready'=>true,'recipe_text'=>'Egg soup. 2 eggs and 2 cups water. Boil water, add beaten eggs, and simmer for 2 minutes. Serves 2.'];
     } else $result=['recipe'=>['title'=>'Egg soup','original_language'=>'en','ingredients'=>[['original_text'=>'2 eggs','ingredient_name'=>'eggs']],'steps'=>[['instruction'=>'Simmer for 2 minutes.','actions'=>[['action_type'=>'timer','duration_seconds'=>120]]]]],
         'variation_label'=>'refined','change_description'=>'Refined the soup as agreed.',
@@ -121,6 +121,43 @@ try {
     $finalPrepare=array_replace($limited,['turn_id'=>str_repeat('2',32),'revision'=>1,'action'=>'prepare','message'=>'']);
     checkChat(isset($service->handle($finalPrepare,'1','2',null,[])['draft']),'A final preparation remains possible at the conversation limit');
     chatError(fn()=>$service->handle(array_replace($finalPrepare,['turn_id'=>str_repeat('3',32),'revision'=>2]),'1','2',null,[]),'chat_limit');
+    $visibleOne="Egg soup\n\nIngredients\n2 eggs\n2 cups water\n\nMethod\n1. Boil water.\n2. Add beaten eggs and simmer for 2 minutes.";
+    $visibleTwo="Ginger egg soup\n\nIngredients\n2 eggs\n2 cups water\n1 teaspoon grated ginger\n\nMethod\n1. Boil water with ginger.\n2. Add beaten eggs and simmer for 2 minutes.";
+    $visibleReplies=[
+        ['message'=>'Here is a soup recipe; we can refine it.','ready'=>false,'recipe_text'=>$visibleOne],
+        ['message'=>'Removing eggs would make it thinner. No change applied.','ready'=>false,'recipe_text'=>$visibleOne],
+        ['message'=>'I added ginger as requested.','ready'=>true,'recipe_text'=>$visibleTwo],
+        ['message'=>'Here is the complete recipe again.','ready'=>true,'recipe_text'=>$visibleTwo,'show_recipe'=>true],
+        ['message'=>'The ginger makes it warmer and more aromatic.','ready'=>true,'recipe_text'=>$visibleTwo],
+        ['message'=>$visibleTwo,'ready'=>true,'recipe_text'=>$visibleTwo],
+        ['message'=>'Use a hotter pan for better browning.','ready'=>false,'recipe_text'=>''],
+    ];
+    $visibleCalls=0;
+    $visibleTransport=static function($payload) use (&$visibleReplies,&$visibleCalls): array {
+        $visibleCalls++;
+        $reply=array_shift($visibleReplies)+['context_updates'=>[],'show_recipe'=>false];
+        return ['status'=>200,'body'=>json_encode(['status'=>'completed','output'=>[['content'=>[['type'=>'output_text','text'=>json_encode($reply)]]]]])];
+    };
+    $visibleService=new RecipeChatService(['api_key'=>'fixture-only','model'=>'fixture-model'],$directory,$visibleTransport);
+    $visibleBody=array_replace($body,['request_id'=>str_repeat('4',32),'message'=>'Help me make soup.']);
+    $shown=$visibleService->handle($visibleBody,'visible-user','2',null,[]);
+    checkChat(str_contains($shown['message'],'Current recipe draft') && str_contains($shown['message'],$visibleOne),'Chat visibly includes the complete recipe beside commentary');
+    checkChat(!$shown['ready'] && !isset($shown['draft']),'Provisional recipe text is readable before readiness, without import review or saving');
+    checkChat($visibleService->handle($visibleBody,'visible-user','2',null,[])===$shown && $visibleCalls===1,'A lost-response retry preserves the visible recipe without duplicating generation');
+    $analysis=$visibleService->handle(array_replace($visibleBody,['turn_id'=>str_repeat('2',32),'revision'=>1,'message'=>'What if I remove the eggs?']),'visible-user','2',null,[]);
+    checkChat($analysis['message']==='Removing eggs would make it thinner. No change applied.','Unchanged-recipe analysis does not repeat or alter the displayed draft');
+    $revised=$visibleService->handle(array_replace($visibleBody,['turn_id'=>str_repeat('3',32),'revision'=>2,'message'=>'Add ginger.']),'visible-user','2',null,[]);
+    checkChat(str_contains($revised['message'],$visibleTwo) && !str_contains($revised['message'],$visibleOne),'An accepted revision displays the new complete recipe');
+    $repeated=$visibleService->handle(array_replace($visibleBody,['turn_id'=>str_repeat('4',32),'revision'=>3,'message'=>'Show me the recipe again.']),'visible-user','2',null,[]);
+    checkChat(str_contains($repeated['message'],$visibleTwo),'An explicit request to see the unchanged recipe displays it again');
+    $visiblePath=$directory.'/recipe-chats/'.hash('sha256',json_encode(['visible-user','2',$visibleBody['request_id']])).'.json';
+    $oldChat=json_decode(file_get_contents($visiblePath),true); unset($oldChat['recipe_visible']); file_put_contents($visiblePath,json_encode($oldChat));
+    $legacy=$visibleService->handle(array_replace($visibleBody,['turn_id'=>str_repeat('5',32),'revision'=>4,'message'=>'What does the ginger do?']),'visible-user','2',null,[]);
+    checkChat(str_contains($legacy['message'],$visibleTwo),'An existing conversation whose recipe was never visible gets the current draft on its next reply');
+    $included=$visibleService->handle(array_replace($visibleBody,['request_id'=>str_repeat('3',32)]),'visible-user','2',null,[]);
+    checkChat($included['message']===$visibleTwo,'A reply already containing the exact recipe is not duplicated');
+    $advice=$visibleService->handle(array_replace($visibleBody,['request_id'=>str_repeat('2',32),'message'=>'How can I improve browning?']),'visible-user','2',null,[]);
+    checkChat($advice['message']==='Use a hotter pan for better browning.' && !str_contains($advice['message'],'Current recipe draft'),'Advice without a dish does not invent or display an empty recipe');
     foreach (glob($directory.'/recipe-chats/*') as $file) checkChat((fileperms($file)&0777)===0600,'Conversation storage is private');
 } finally {
     foreach (glob($directory.'/recipe-chats/*') as $file) unlink($file);

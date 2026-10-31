@@ -16,7 +16,7 @@ $payloads=[]; $updates=[]; $omitUpdates=false; $calls=0; $session=0;
 $config=['api_key'=>'fixture-only','model'=>'fixture-model'];
 $transport=static function(array $payload) use (&$payloads,&$updates,&$omitUpdates,&$calls): array {
     $calls++; $payloads[]=$payload;
-    $reply=['message'=>'We can keep discussing your cooking preferences.','ready'=>false,'recipe_text'=>''];
+    $reply=['show_recipe'=>false,'message'=>'We can keep discussing your cooking preferences.','ready'=>false,'recipe_text'=>''];
     if (!$omitUpdates) $reply['context_updates']=$updates;
     return ['status'=>200,'body'=>json_encode(['status'=>'completed','output'=>[['content'=>[['type'=>'output_text','text'=>json_encode($reply)]]]]])];
 };

@@ -32,7 +32,7 @@ $transport=static function(array $payload): array {
         }
         return ['status'=>200,'body'=>json_encode(['status'=>'completed','output'=>[['content'=>[['type'=>'output_text','text'=>json_encode([
             'message'=>'Remembered: '.implode(' | ',array_map(static fn($fact)=>$fact['person'].': '.$fact['preference'],$context)),
-            'ready'=>true,'context_updates'=>$updates,
+            'ready'=>true,'show_recipe'=>$latest==='Show the recipe again.','context_updates'=>$updates,
             'recipe_text'=>'Agreed soup. 2 cups water, 1 teaspoon salt. Bring to a boil and simmer for 2 minutes. Serves 2.',
         ])]]]]])];
     }

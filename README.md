@@ -253,3 +253,32 @@ concurrent accounts, interrupted two-file commit recovery and mid-run revocation
 No live provider call, production state change, Flutter build, deployment, release
 or main merge is included. No Flutter source/dependency changed, so Flutter checks
 were not run for this backend-only feature.
+
+
+### Chat recipe visibility repair
+
+The user reported that chat said it had created a recipe but showed only its
+commentary. `recipe_text` was already generated and stored, but the released app
+renders only the response's `message`; the actual cooking specification stayed
+hidden until Review.
+
+The backend now appends a clearly labeled **Current recipe draft** and its complete
+text to the visible reply when first proposed or revised. AI is instructed to use
+readable plain text with a title, ingredient lines and numbered method steps.
+Provisional text is visible before readiness, so clarification and refinement can
+refer to it. Advice with no recipe remains ordinary chat; unchanged analysis does
+not repeat the whole draft. The provider also returns a `show_recipe` boolean so
+an explicit request to see the recipe again displays even an unchanged draft. If the reply already contains the exact recipe, it is
+not duplicated. Existing conversations whose draft was hidden get it on their next
+new reply. Completed-turn retries retain their original cached response. Showing
+text does not open the editor or save anything; Review/Save remain explicit.
+
+This repair stays on `feature/ai-user-context` with the preference-context work.
+It needs only backend deployment to work in the existing released clients; no app
+code or rebuild is required. It is not deployed or merged by this source repair.
+Focused validation uses `php tests/recipe_chat.php` (96 checks),
+`php tests/recipe_user_context.php` (71), PHP syntax checks, and the 12 real-socket
+AI tests with fake providers/disposable SQLite. Coverage includes full visible
+recipe contents, provisional and revised drafts, unchanged/hypothetical discussion,
+legacy conversations, duplicate suppression, cache/retry consistency and existing
+context/access/review-save behavior. No paid AI call or production recipe mutation.

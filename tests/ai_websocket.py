@@ -77,9 +77,18 @@ class AiWireTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(reply['type'], 'response', reply)
         self.assertEqual(reply['data']['revision'], 1)
         self.assertNotIn('draft', reply['data'])
+        self.assertIn('Current recipe draft', reply['data']['message'])
+        self.assertIn('Agreed soup. 2 cups water', reply['data']['message'])
+        self.assertIn('simmer for 2 minutes', reply['data']['message'])
         self.assertTrue(any(e.get('type') == 'progress' for e in events))
         await self.send_ai('/households/1/recipe-chat', {**body, 'turn_id': '2' * 32,
-                           'action': 'prepare', 'message': '', 'revision': 1})
+                           'message': 'Show the recipe again.', 'revision': 1})
+        repeated, _ = await self.result()
+        self.assertEqual(repeated['type'], 'response', repeated)
+        self.assertIn('Current recipe draft', repeated['data']['message'])
+        self.assertIn('Agreed soup. 2 cups water', repeated['data']['message'])
+        await self.send_ai('/households/1/recipe-chat', {**body, 'turn_id': '3' * 32,
+                           'action': 'prepare', 'message': '', 'revision': 2})
         prepared, _ = await self.result()
         self.assertEqual(prepared['type'], 'response', prepared)
         recipe = prepared['data']['draft']['recipe']
