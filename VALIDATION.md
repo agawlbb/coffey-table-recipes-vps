@@ -282,3 +282,38 @@ trigger. No branch protection, history rewrite, app build or app release was add
   The old fully merged local backend_migration branch is also removed; its
   published history remains in main. Final default trees must be clean and their
   local/GitHub heads must match before reporting completion.
+
+
+## Parent-first AI import categories — 2026-10-31
+
+Task: repair parent/category duplication and category-picture clarification requests.
+Branch `fix/ai-import-categories` starts from canonical VPS main
+`287dc4d67a27c4d6a75515c19410e0721fc272ef`, separately from backend migration.
+This branch is not merged or deployed.
+
+AI first chooses an existing parent, then selects a suitable existing child under
+that parent or proposes a new child. The request schema constrains parent labels
+to catalog roots. Validation rejects unknown parents, children used as parents,
+and parent-only/self-named assignments instead of silently selecting a root.
+Existing children still resolve to trusted catalog IDs, while a redundant parent
+alongside a valid child is removed. Manual app selection and blank-recipe
+classification retain their existing behavior.
+
+Category pictures already use automatic AI generation after saving, subject to
+household image permissions. Import instructions now explicitly prohibit asking
+users to choose, upload, describe or supply category pictures in clarification
+questions. No extra image request, app control or schema migration was added.
+
+Verified in the shared development container:
+
+- PHP syntax for `src/RecipeImportService.php` and `tests/recipe_ai.php`.
+- `php tests/recipe_ai.php`: 294 checks, including existing-child resolution,
+  new-child proposals, invalid parents, root-only rejection, and the actual
+  mocked request schema and category-picture prompt instructions.
+- Shared callers/policies: `recipe_variation.php` (92 checks),
+  `website_import.php` (19), `recipe_methods.php` (25),
+  `recipe_descriptions.php` (18), `recipe_wording.php` (25).
+- `php tests/category_images.php`: existing automatic artwork ownership,
+  inherited-image detection, original-host reuse and household permissions.
+
+No live AI calls, production data changes, Flutter builds or deployments.

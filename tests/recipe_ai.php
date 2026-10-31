@@ -39,10 +39,36 @@ foreach (['10 to 15 minutes','10–15 minutes','10-15 minutes','10 minutes to 15
 }
 $selfCategory=$input;
 $selfCategory['recipe']['categories']=[['label'=>' Main Dish ','parent_label'=>'main dish']];
-$selfDraft=RecipeImportService::draft($selfCategory,[['id'=>'10','label'=>'Main Dish','parent_label'=>null]])['recipe'];
-aiExpect($selfDraft['category_assignments']===[['category_id'=>'10','label'=>'Main Dish','parent_label'=>'']],'Self-named child was not resolved to its root.');
+aiReject(fn()=>RecipeImportService::draft($selfCategory,[['id'=>'10','label'=>'Main Dish','parent_label'=>null]]),502);
 $selfCategory['recipe']['categories'][]=['label'=>'Main Dish','parent_label'=>''];
 aiExpect(count(RecipeImportService::draft($selfCategory)['recipe']['category_assignments'])===1,'Root and self-named child were not deduplicated.');
+$fullCatalog=[['id'=>'10','label'=>'Desserts','parent_label'=>null],['id'=>'42','label'=>'Cookies','parent_label'=>'Desserts'],['id'=>'11','label'=>'Main Dish','parent_label'=>null]];
+$categorySchema=RecipeImportService::responseFormat(false,$fullCatalog)['schema']['properties']['recipe']['properties']['categories'];
+aiExpect($categorySchema['items']['properties']['parent_label']['enum']===['Desserts','Main Dish'],'AI parents are not constrained to existing roots.');
+aiExpect(RecipeImportService::draft($timed,$fullCatalog)['recipe']['category_assignments'][0]['category_id']==='42','Existing child did not resolve under its parent.');
+aiExpect(RecipeImportService::draft($pie,$fullCatalog)['recipe']['category_assignments']===[['label'=>'Pies','parent_label'=>'Desserts']],'New child proposal was lost.');
+foreach ([['label'=>'Pies','parent_label'=>'Unknown'],['label'=>'Pies','parent_label'=>'Cookies'],['label'=>'Desserts','parent_label'=>''],['label'=>'Main Dish','parent_label'=>'Desserts']] as $invalidCategory) {
+    $invalid=$input; $invalid['recipe']['categories']=[$invalidCategory];
+    aiReject(fn()=>RecipeImportService::draft($invalid,$fullCatalog),502);
+}
+$categoryRequests=[];
+$categoryReply=$timed;
+$categoryService=new RecipeImportService(['api_key'=>'fixture','model'=>'test-model'],sys_get_temp_dir(),
+    static function(array $payload) use (&$categoryRequests,&$categoryReply): array {
+        $categoryRequests[]=$payload;
+        return ['status'=>200,'body'=>json_encode(['status'=>'completed','output'=>[
+            ['type'=>'message','content'=>[['type'=>'output_text','text'=>json_encode($categoryReply)]]]
+        ]])];
+    });
+$existingDraft=$categoryService->analyze(['kind'=>'text','text'=>'Cookies: mix and bake.'],'category-fixture',$fullCatalog);
+aiExpect($existingDraft['recipe']['category_assignments'][0]['category_id']==='42','Import request failed to resolve existing child.');
+$categoryReply['recipe']['categories']=[['label'=>'Tarts','parent_label'=>'Desserts']];
+$newDraft=$categoryService->analyze(['kind'=>'text','text'=>'Tarts: fill pastry shells and bake.'],'category-fixture',$fullCatalog);
+aiExpect($newDraft['recipe']['category_assignments']===[['label'=>'Tarts','parent_label'=>'Desserts']],'Import request lost new child proposal.');
+foreach ($categoryRequests as $request) {
+    aiExpect($request['text']['format']['schema']['properties']['recipe']['properties']['categories']['items']['properties']['parent_label']['enum']===['Desserts','Main Dish'],'Live request schema omitted existing parent constraints.');
+    aiExpect(str_contains($request['instructions'],'then consider only its existing child categories'),'Parent-first category selection policy missing.');
+}
 $heat=$input;
 $heat['recipe']['steps'][0]['actions']=[['action_type'=>'appliance_temperature','label'=>'Simmer over low heat','temperature_value'=>null,'temperature_unit'=>'F']];
 aiExpect(RecipeImportService::draft($heat)['recipe']['actions']===[], 'Qualitative heat should not create an action.');
@@ -101,6 +127,7 @@ $repeatService = new RecipeImportService(['api_key'=>'test-fixture','model'=>'te
         aiExpect(isset($payload['text']['format']['schema']['properties']['recipe']['properties']['ingredient_groups']),'Component membership schema missing.');
         aiExpect(str_contains($payload['instructions'],'Conversational amounts:'),'Qualitative amount policy missing.');
         aiExpect(str_contains($payload['instructions'],'exactly ONE timer') && str_contains($payload['instructions'],'full parent and child category catalog'),'Missing range/category prompt rules.');
+        aiExpect(str_contains($payload['instructions'],'Category pictures are generated automatically with AI after saving; never ask the user'),'Category picture clarification policy missing.');
         aiExpect(str_contains(json_encode($payload['input']), 'Cookies'),'Category catalog missing from AI request.');
         return ['status'=>200,'body'=>json_encode(['status'=>'completed','output'=>[
             ['type'=>'message','content'=>[['type'=>'output_text','text'=>json_encode($input)]]],
