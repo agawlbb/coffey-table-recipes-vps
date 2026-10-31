@@ -156,3 +156,42 @@ The existing uploaded recipe credential is only referenced by its private runtim
 path. The updated runtime image has not been built and the branch is not deployed.
 No source was merged into main. Physical-device suspension, real-provider execution
 and the rebuilt production runtime are not claimed verified.
+
+# Deployment from feature/vps-ai-websocket
+
+The user explicitly requested deploying this branch while retaining the earlier
+instruction not to merge into main. Published runtime source is
+`3bbd7723c6cd9bf0147e0ff1f735afc67d48a6bf`; this subsequent commit records evidence
+only. Shared-hosting and app branches were neither deployed nor merged.
+
+- Saved the previous source, Compose and Caddy configuration in
+  `/var/backups/ctr-backend-before-ai-20261031T095222Z`. The previous image
+  `sha256:1cec91ca6ec9eb989b07b669e3e727df8356ea5c3d56b187d27970114723765d`
+  is retained as `ctr-backend:before-ai-20261031T095222Z`. The root-only
+  `deployment.json` in that backup records source/image and verification metadata.
+  Private credentials and persistent state/photos were not replaced.
+- Built the backend runtime from this branch's Dockerfile. New image:
+  `sha256:48d43a22111a500ed5853688f3db2406a97634c4d978db834ff24b3d36797e36`.
+  Before restart, isolated image checks verified pdo_mysql, curl, mbstring,
+  pcntl, DOM and OpenSSL; Poppler pdftotext 22.12.0 and Tesseract 5.3.0 ran.
+  No app package was built.
+- Ran the existing `python3 deploy.py` on the VPS host. Source copied and the
+  backend container restarted successfully. Caddy reloaded successfully.
+  CpuShares remains 1024; effective cpu.max is `max 100000`. The container was
+  running afterward with zero restarts.
+- Compared all 38 installed PHP runtime files against the requested source;
+  every hash matched. The real runtime established database TLS and loaded the
+  private AI configuration. Non-generating OpenAI model-access requests returned
+  HTTP 200 for both the configured recipe and image models. No secret values
+  were printed or stored in Git. The credential directory remains mode 700 and
+  the AI JSON remains mode 600.
+- Public `wss://ctr.coffeybean.com/shopping` recognized the new AI scope and
+  rejected an invalid credential with `401 invalid_token`. Anonymous public-scope
+  authentication and ping/pong succeeded.
+- Ran `python3 tests/live_shopping.py`: authenticated public WSS shopping reads
+  and revocation on the still-open connection passed. Its temporary verification
+  credential was revoked; shopping items and recipe/account data were not edited.
+
+These production checks validate deployment, configuration/model access and
+socket availability. No paid AI generation, signed-in end-user AI/clarification
+run, physical-device suspension test or app build/deployment was performed.
