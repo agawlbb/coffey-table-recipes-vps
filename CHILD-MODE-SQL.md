@@ -30,4 +30,25 @@ Offline validation passed: PIN/default/isolation/lockout/next-login-reset checks
 policy import preservation and malformed/repeated-import rejection; 25 account
 checks; five real account WebSocket tests including PIN and admin-reset access;
 signed identity (21 checks), data sockets and four mocked deployment checks.
-Production import and deployment evidence will be recorded after cutover.
+
+Production cutover, 2026-10-31: migration 020 added all five columns using a
+temporary ALTER grant, then restored the original SELECT/INSERT/UPDATE/DELETE
+privileges. Three policy files were matched/imported for four SQL users; no files
+were unmatched. Every copied flag/hash/counter/reset was read back and compared
+inside the transaction, and the unchanged source state was checked again afterward.
+Original files remain on InMotion. The protected one-time setup receipt is
+`private/child-mode-sql-import.json`; deployment requires it before stopping the
+backend, and does not run the import. No rollback image/archive was created.
+
+Shared runtime `index.php` and `src/ChildMode.php` from `67ebd92` were copied using
+the authenticated cPanel API and their contents read back and hash-verified. This
+retires the old account/PIN/reset routes and makes retained write guards use SQL.
+The web frontend was not rebuilt. Its older HTTP account routing is retired; use
+the matching Android test build until the new web app is explicitly published.
+
+VPS runtime `c9db933d0f04c13af75118feb5e2ae3e93ddfc2f` was copied/restarted with the
+existing image and private/state directories. All 48 runtime PHP/lock/asset files
+matched. CPU shares remained 1024 and effective cpu.max was `max 100000`. Live SQL
+policy reads for all four users, public account rejection of an invalid token,
+public WebSocket readiness and heartbeat passed. No real email was sent by these
+deployment probes. Fresh-user/device behavior remains a manual test.
