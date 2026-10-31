@@ -66,13 +66,22 @@ class AccountWireTests(unittest.IsolatedAsyncioTestCase):
         await self.app.send_json(dict(v=1, type='ping'))
         self.assertEqual((await self.message(self.app))['type'], 'pong')
 
-    async def test_child_policy_and_policy_outage_fail_closed(self):
+    async def test_sql_child_policy_changes_and_admin_reset(self):
         await self.auth(self.app, 'account', 'child', None)
         self.assertTrue((await self.request(self.app, '/me'))['data']['user']['child_mode'])
         self.assertEqual((await self.request(self.app, '/me/verification-email', {}))['status'], 403)
+        self.assertFalse((await self.request(self.app, '/me/child-mode', dict(enabled=False, pin='1234')))['data']['enabled'])
+        self.assertTrue((await self.request(self.app, '/me/child-mode', dict(enabled=True, pin='5678')))['data']['enabled'])
         other = await self.connect()
-        await self.auth(other, 'account', 'policy-failed', None)
-        self.assertEqual((await self.request(other, '/households', dict(name='Family', person_name='Owner')))['status'], 503)
+        await self.auth(other, 'account', 'new', None)
+        with closing(sqlite3.connect(self.database)) as db:
+            child_id = db.execute("SELECT id FROM users WHERE firebase_uid='child'").fetchone()[0]
+        path = f'/admin/users/{child_id}/reset-child-mode'
+        self.assertEqual((await self.request(other, path, dict(confirm=True)))['status'], 403)
+        admin = await self.connect()
+        await self.auth(admin, 'account', 'admin', None)
+        self.assertEqual((await self.request(admin, path, {}))['status'], 422)
+        self.assertTrue((await self.request(admin, path, dict(confirm=True)))['data']['reset_pending'])
 
 
 if __name__ == '__main__':

@@ -6,7 +6,7 @@ try {
     $pdo ??=runtimeDatabase(); $verify ??=runtimeVerifier();
     if (!isset($account)) {
         $config=runtimeAccountConfig(); $directory=new FirebaseAccountDirectory($config);
-        $account=new AccountService($pdo,$verify,[$directory,'requireAccount'],'runtimeAccountPolicy',
+        $account=new AccountService($pdo,$verify,[$directory,'requireAccount'],
             [$directory,'lookup'],[new InvitationMail($config),'send'],[$directory,'verificationLink'],
             [new VerificationMail($config),'send'],$config['app_url']);
     }

@@ -1,26 +1,38 @@
 <?php
 declare(strict_types=1);
 
-/** Account policy in protected storage, independent of household membership. */
+/** Account policy and PIN hashes in the existing users table. Row locks protect attempts/resets. */
 final class ChildMode {
-    public function __construct(private string $directory) {}
+    public function __construct(private PDO $pdo) {}
     private function locked(string $uid, callable $action): array {
         if ($uid === '') throw new HttpError(401,'authentication_required','Please sign in.');
-        if (!is_dir($this->directory) && !mkdir($this->directory,0700,true) && !is_dir($this->directory)) throw new RuntimeException('Child mode storage unavailable');
-        $file=fopen($this->directory.'/'.hash('sha256',$uid).'.json','c+');
-        if (!$file || !flock($file,LOCK_EX)) throw new RuntimeException('Child mode lock unavailable');
+        $this->pdo->beginTransaction();
         try {
-            chmod($this->directory.'/'.hash('sha256',$uid).'.json',0600);
-            $text=stream_get_contents($file);
-            $state=$text===''?['enabled'=>false]:json_decode($text,true,16,JSON_THROW_ON_ERROR);
-            $before=$state;
-            $result=$action($state);
-            if ($state!==$before) {
-                rewind($file);$json=json_encode($state,JSON_THROW_ON_ERROR);
-                if (fwrite($file,$json)!==strlen($json)||!ftruncate($file,strlen($json))||!fflush($file)) throw new RuntimeException('Child mode storage failed');
+            $q=$this->pdo->prepare('SELECT child_mode,child_mode_pin_hash,child_mode_attempts,child_mode_blocked_until,child_mode_reset_after FROM users WHERE firebase_uid=? FOR UPDATE');
+            $q->execute([$uid]); $row=$q->fetch(PDO::FETCH_ASSOC);
+            if (!$row) throw new HttpError(403,'account_disabled','Account unavailable.');
+            $state=['enabled'=>(bool)$row['child_mode']];
+            foreach (['pin_hash','attempts','blocked_until','reset_after'] as $field) {
+                $value=$row['child_mode_'.$field];
+                if ($value!==null) $state[$field]=$field==='pin_hash' ? $value : (int)$value;
             }
+            $before=$state; $result=$action($state);
+            if ($state!==$before) {
+                $q=$this->pdo->prepare('UPDATE users SET child_mode=?,child_mode_pin_hash=?,child_mode_attempts=?,child_mode_blocked_until=?,child_mode_reset_after=? WHERE firebase_uid=?');
+                $q->execute([$state['enabled']?1:0,$state['pin_hash']??null,$state['attempts']??0,$state['blocked_until']??null,$state['reset_after']??null,$uid]);
+            }
+            $this->pdo->commit();
             return $result;
-        } finally {flock($file,LOCK_UN);fclose($file);}
+        } catch (Throwable $error) {
+            if ($this->pdo->inTransaction()) $this->pdo->rollBack();
+            throw $error;
+        }
+    }
+    public function peopleChildModes(string $userId): array {
+        $q=$this->pdo->prepare('SELECT p.id,u.child_mode FROM household_people p JOIN household_memberships m ON m.household_id=p.household_id JOIN users u ON u.id=p.user_id WHERE m.user_id=?');
+        $q->execute([$userId]); $flags=[];
+        foreach ($q->fetchAll(PDO::FETCH_ASSOC) as $row) $flags[(string)$row['id']]=(bool)$row['child_mode'];
+        return $flags;
     }
     public function state(array $identity): array {
         return $this->locked($identity['uid'],static function(array &$s) use($identity): array {

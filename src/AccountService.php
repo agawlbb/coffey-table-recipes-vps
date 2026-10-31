@@ -4,11 +4,11 @@ declare(strict_types=1);
 /** Firebase owns credentials. This service owns local account/setup and mail actions. */
 final class AccountService {
     public function __construct(private PDO $pdo,private Closure $verify,private $requireAccount,
-        private $policy,private $lookup,private $sendInvitation,private $generateVerification,
+        private $lookup,private $sendInvitation,private $generateVerification,
         private $sendVerification,private string $appUrl) {}
 
     public static function matches(string $path): bool {
-        return preg_match('#^/(?:me(?:/verification-email)?|households|households/[1-9][0-9]*/people/[1-9][0-9]*/invitations|invitations/[1-9][0-9]*/respond)$#D',parse_url($path,PHP_URL_PATH)?:'')===1;
+        return preg_match('#^/(?:me(?:/verification-email|/child-mode)?|admin/users/[1-9][0-9]*/reset-child-mode|households|households/[1-9][0-9]*/people/[1-9][0-9]*/invitations|invitations/[1-9][0-9]*/respond)$#D',parse_url($path,PHP_URL_PATH)?:'')===1;
     }
 
     public function handle(string $token,string $path,?array $body): array {
@@ -17,10 +17,22 @@ final class AccountService {
         $identity=($this->verify)($token);
         $households=new HouseholdService($this->pdo,$this->requireAccount);
         $user=$households->bootstrap($identity);
-        // PIN storage and administrator resets remain on InMotion. Never assume disabled on failure.
-        $policy=($this->policy)($token);
-        if (!is_array($policy) || !is_bool($policy['enabled']??null)) throw new HttpError(503,'account_policy_unavailable','Account policy is temporarily unavailable. Please try again.');
-        if ($body!==null && $policy['enabled']) throw new HttpError(403,'child_mode','Child mode allows viewing and favorites only.');
+        $modes=new ChildMode($this->pdo);
+        $policy=$modes->state($identity);
+        $modes->guard($identity,$route,$body===null?'GET':'POST');
+        if ($route==='/me/child-mode') {
+            return $body===null ? $policy+['people_child_modes'=>(object)$modes->peopleChildModes($user['id'])]
+                : $modes->change($identity,$body);
+        }
+        if (preg_match('#^/admin/users/([1-9][0-9]*)/reset-child-mode$#D',$route,$reset)) {
+            if ($body===null) throw new HttpError(405,'method_not_allowed','Use a write request.');
+            (new AdministrationService($this->pdo,static function(){}))->requireAdministrator($user['id']);
+            if (($body['confirm']??false)!==true) throw new HttpError(422,'confirmation_required','Confirm the child mode reset.');
+            $q=$this->pdo->prepare('SELECT firebase_uid FROM users WHERE id=?'); $q->execute([$reset[1]]);
+            $uid=$q->fetchColumn();
+            if (!is_string($uid)) throw new HttpError(404,'user_not_found','User not found.');
+            return $modes->requestReset($uid);
+        }
         $invitations=new InvitationService($this->pdo,$households,$this->lookup,$this->sendInvitation,$this->appUrl);
         if ($route==='/me' && $body===null) {
             $user['child_mode']=$policy['enabled'];

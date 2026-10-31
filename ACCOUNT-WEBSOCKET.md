@@ -1,5 +1,9 @@
 # VPS account functions
 
+Child-mode policy has since moved into SQL, including PIN changes and administrator
+resets. The InMotion policy HTTP dependency described in this earlier checkpoint
+has been removed; see [CHILD-MODE-SQL.md](CHILD-MODE-SQL.md).
+
 The `feature/vps-account-auth` branches in the app, InMotion and VPS repositories
 move account bootstrap, first household creation, verification mail and invitations
 to `wss://ctr.coffeybean.com/shopping`. Bases: app `6a4227a`, InMotion `42ab625`,

@@ -39,15 +39,3 @@ function runtimeAccountConfig(): array {
         'firebase_service_account_file'=>$private.'/firebase-admin.json','smtp'=>$smtp,
         'app_url'=>'https://coffeybean.com/CoffeyTableRecipes/app/'];
 }
-
-/** Retain the existing PIN authority rather than introducing a second copy of account policy. */
-function runtimeAccountPolicy(string $token): array {
-    $curl=curl_init('https://coffeybean.com/CoffeyTableRecipes/api/v1/me/child-mode');
-    curl_setopt_array($curl,[CURLOPT_RETURNTRANSFER=>true,CURLOPT_CONNECTTIMEOUT=>5,CURLOPT_TIMEOUT=>20,
-        CURLOPT_PROTOCOLS=>CURLPROTO_HTTPS,CURLOPT_HTTPHEADER=>['Authorization: Bearer '.$token,'Accept: application/json']]);
-    $raw=curl_exec($curl); $status=curl_getinfo($curl,CURLINFO_HTTP_CODE); curl_close($curl);
-    $data=is_string($raw) ? json_decode($raw,true) : null;
-    if (in_array($status,[401,403],true)) throw new HttpError($status,'account_unavailable','Please sign in again.');
-    if ($status!==200 || !is_array($data) || !is_bool($data['enabled']??null)) throw new HttpError(503,'account_policy_unavailable','Account policy is temporarily unavailable. Please try again.');
-    return $data;
-}

@@ -7,7 +7,8 @@ Account-scoped WebSocket connections synchronize timers; unauthenticated,
 read-only connections serve public recipe links. The persistent MySQL database
 stays on InMotion. Account bootstrap, household setup, verification mail and
 invitations use the account WebSocket scope; see [ACCOUNT-WEBSOCKET.md](ACCOUNT-WEBSOCKET.md).
-Child-mode PIN policy and account administration remain in the separate
+Child-mode policy, PIN changes and administrator resets use the SQL-backed VPS
+account scope; see [CHILD-MODE-SQL.md](CHILD-MODE-SQL.md). Other account administration remains in the separate
 [InMotion repository](https://github.com/agawlbb/coffey-table-recipes-server).
 
 AI imports, clarification turns, variations and image generation also use this

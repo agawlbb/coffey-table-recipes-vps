@@ -26,7 +26,7 @@ def verify_cpu_policy():
 
 
 def deploy():
-    for name in ('database.json', 'firebase.json', 'timer-push.json', 'recipe-ai.local.json', 'smtp.json', 'firebase-admin.json'):
+    for name in ('database.json', 'firebase.json', 'timer-push.json', 'recipe-ai.local.json', 'smtp.json', 'firebase-admin.json', 'child-mode-sql-import.json'):
         if not (HOME / 'private' / name).is_file():
             raise RuntimeError('Missing existing private configuration: ' + name)
     if not (ROOT / 'vendor/autoload.php').is_file():

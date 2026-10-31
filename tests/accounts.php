@@ -16,7 +16,6 @@ accountError(fn()=>$service->handle('deleted','/me',null),401,'account_deleted')
 checkAccount($pdo->query("SELECT COUNT(*) FROM users WHERE firebase_uid='deleted'")->fetchColumn()===0,'Deleted identity was recreated.');
 accountError(fn()=>$service->handle('disabled','/me',null),403,'account_disabled');
 accountError(fn()=>$service->handle('bad','/me',null),401,'invalid_token');
-accountError(fn()=>$service->handle('policy-failed','/households',['name'=>'No','person_name'=>'No']),503,'account_policy_unavailable');
 checkAccount($service->handle('child','/me',null)['user']['child_mode']===true,'Child policy missing.');
 accountError(fn()=>$service->handle('child','/households',['name'=>'No','person_name'=>'No']),403,'child_mode');
 $house=$service->handle('new','/households',['name'=>'Family','person_name'=>'Owner'])['household'];

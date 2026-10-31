@@ -22,7 +22,7 @@ class DeploymentTests(unittest.TestCase):
                 path = source / name
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_text('fixture')
-            for name in ('private/database.json', 'private/firebase.json', 'private/timer-push.json', 'private/recipe-ai.local.json', 'private/smtp.json', 'private/firebase-admin.json',
+            for name in ('private/database.json', 'private/firebase.json', 'private/timer-push.json', 'private/recipe-ai.local.json', 'private/smtp.json', 'private/firebase-admin.json', 'private/child-mode-sql-import.json',
                          'state/pending.json', 'state/media/recipes/photo.jpg', 'code/obsolete.php'):
                 path = home / name
                 path.parent.mkdir(parents=True, exist_ok=True)
@@ -68,7 +68,7 @@ class DeploymentTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             (root / 'private').mkdir()
-            for name in ('database.json', 'firebase.json', 'timer-push.json', 'recipe-ai.local.json', 'smtp.json', 'firebase-admin.json'):
+            for name in ('database.json', 'firebase.json', 'timer-push.json', 'recipe-ai.local.json', 'smtp.json', 'firebase-admin.json', 'child-mode-sql-import.json'):
                 (root / 'private' / name).write_text('fixture')
             with patch.object(deploy, 'ROOT', root), patch.object(deploy, 'HOME', root), \
                  patch.object(deploy, 'run') as run:
