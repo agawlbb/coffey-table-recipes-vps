@@ -83,3 +83,96 @@ editing shopping items.
 Initial source was extracted from the server repository's `migration/vps-backend`
 commit `f28caaa4e8e1c5d1c13b341f87ef0a0056a9a3c5`, preserving its tested behavior.
 Licensed AGPL-3.0-only; see LICENSE and NOTICE.md.
+
+
+## Conversational recipe creation and changes
+
+Working branch `feature/ai-dish-chat`, based on `1257a920f9c09e1c6ca0407ee3dbb0fc315895f9`.
+The companion app branch starts at `0f5c38bd7dbf13027b750e4f58b59d7bf889c09c`.
+Do not merge or deploy this feature until the user approves integration; preserve
+ongoing build/release work. There are no inMotion backend additions.
+
+`POST /households/{household}/recipe-chat` runs through the existing VPS AI
+WebSocket scope and isolated AI worker. All authenticated household members may
+use it, regardless of `ai_images_enabled` or the legacy variation access policy.
+Recipe-specific chats require a live recipe attached to the selected household.
+The worker rechecks membership/account access before returning its result.
+
+Request fields:
+
+- `request_id`: 32 lowercase hex characters identifying the conversation.
+- `turn_id`: 32 lowercase hex characters; unchanged retries reuse this value.
+- `revision`: last acknowledged conversation revision, starting at integer 0.
+- `mode`: `create`, `variation`, or `edit`; fixed for a conversation.
+- `recipe_id`: a string ID for `variation` and `edit`, resolved server-side.
+- `action`: `message` or `prepare`.
+- `message`: at most 4,000 characters for `message`; empty for `prepare`.
+
+Replies contain `message`, `ready` and `revision`. Readiness never saves or ends
+the conversation. `prepare` uses only the server-held agreed cooking specification,
+never a client-supplied draft or the speculative transcript. It invokes the
+existing import standardizer and returns `draft` when ready for normal editor
+review. Any standardizer questions become another chat reply instead. Only the
+ordinary recipe save endpoint writes recipe data.
+
+Private state under `storage/recipe-chats/` is scoped to actor, household and
+session; a nonblocking per-session lock serializes turns. Cached successful turns
+make lost-response retries idempotent. Turn-content reuse and stale revisions are
+rejected. State replacement is atomic and files are mode 0600. Chat state is a
+working cache, not a user-facing saved history; closing/restarting the app does
+not restore a conversation. A conversation allows 60 message/preparation turns,
+with one final preparation still allowed at the limit so the user can finish.
+
+Cooking-only original recipe context is sent to the provider with response
+storage disabled. Group titles and timer/temperature actions retain their cooking
+meaning without database identifiers, photographs or private account metadata.
+The model distinguishes hypothetical analysis from accepted changes and retains
+a complete agreed recipe separately. New dishes use `ai_created`; variations use
+`ai_variation` and a server-bound parent, with the existing visual review before any parent photograph is reused.
+Edits retain recipe identity, revision, source, photos, categories and links, replace
+cooking details and clear stale nutrition. Preparation rejects a changed original;
+the ordinary editor still enforces save-time revision/shared-edit checks.
+
+The existing private `recipe-ai.local.json` is reused. No schema, dependency,
+transport, provider-key or infrastructure change is required. Feature publication
+is source-only; no deployment, restart or app build is included.
+
+
+Validation on 2026-10-31: `php tests/recipe_chat.php` passed 81 checks;
+`php tests/recipe_variation.php` passed 92; `php tests/recipe_ai.php` passed 294.
+`php tests/ai_jobs.php` passed crash, duplicate-run and cancellation checks.
+`python -m unittest discover -s tests -p ai_websocket.py` passed 10 real-socket
+integration tests using fake providers and disposable SQLite. PHP syntax checks
+passed for the new/changed services, bootstrap and AI fixture worker;
+`git diff --check` passed. The final conversation-limit and parent-cover tests
+are included. No hosted data, live provider, deployment or service restart was
+used. Main advanced independently during this task; the feature remains based on
+the recorded starting commit pending authorized integration.
+
+
+### Authorized feature deployment — 2026-10-31
+
+The user explicitly requested deploying the backend from this feature branch and
+building a test Android APK; merging into main remains unauthorized. Accepted main
+`40d783c` was integrated into the feature branch to preserve the current VPS
+routing, HTTP/media cutover and database-connection repair. The deployed source is
+`8dc297aabcaedf7fa1bd01b7eecc303e50c74774`.
+
+Post-integration checks passed: 81 chat fixtures, 92 variation checks, 294 import
+checks, AI/account worker recovery/cancellation/detached-completion checks, 10 AI
+socket integration tests, 4 deployer-preservation tests, 34 HTTP checks and media
+migration/preservation fixtures. Providers and SQL were fake/disposable for tests.
+
+The existing `deploy.py` copied source and restarted `ctr-backend` without building
+a runtime image or running schema/data migrations. Installed source hashes match
+the deployed commit; private configuration hashes were unchanged and the state
+directory was preserved. CpuShares=1024 and unlimited cpu.max were verified.
+Public HTTPS health and both association documents returned 200 JSON; private
+configuration URLs returned 404. Public WebSocket authentication/heartbeat passed,
+and AI authentication rejected an invalid token with 401. The live PHP runtime
+loads and matches `RecipeChatService` on the intended AI route. No live provider
+call or recipe save was used for deployment validation.
+
+The app feature integrates accepted main and reserves signed Android test build
+46, using source `9754546d62ea6d29a8833832f9ba8a571ed3cb30`. No web/iOS build,
+release tag or main-branch change is part of this deployment.
