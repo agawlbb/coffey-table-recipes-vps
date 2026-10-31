@@ -3,7 +3,8 @@
 Branch: `feature/vps-remaining-php`, based on VPS main `1257a92`.
 Matching branches exist in the Flutter, shared-host and Home Assistant repositories.
 The VPS source is deployed for feature testing; see the deployment record below.
-Do not merge until the user approves.
+The user approved merging this migration on 2026-10-31. The app release remains
+held for AI dish chat. InMotion endpoint retirement is not deployed by this merge.
 
 ## Service layout
 
