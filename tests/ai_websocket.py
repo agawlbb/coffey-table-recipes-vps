@@ -1,5 +1,7 @@
 """AI child-process execution over real sockets, with disposable SQL and a fake provider."""
 import asyncio
+import hashlib
+from pathlib import Path
 from contextlib import closing
 import sqlite3
 import unittest
@@ -75,9 +77,18 @@ class AiWireTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(reply['type'], 'response', reply)
         self.assertEqual(reply['data']['revision'], 1)
         self.assertNotIn('draft', reply['data'])
+        self.assertIn('Current recipe draft', reply['data']['message'])
+        self.assertIn('Agreed soup. 2 cups water', reply['data']['message'])
+        self.assertIn('simmer for 2 minutes', reply['data']['message'])
         self.assertTrue(any(e.get('type') == 'progress' for e in events))
         await self.send_ai('/households/1/recipe-chat', {**body, 'turn_id': '2' * 32,
-                           'action': 'prepare', 'message': '', 'revision': 1})
+                           'message': 'Show the recipe again.', 'revision': 1})
+        repeated, _ = await self.result()
+        self.assertEqual(repeated['type'], 'response', repeated)
+        self.assertIn('Current recipe draft', repeated['data']['message'])
+        self.assertIn('Agreed soup. 2 cups water', repeated['data']['message'])
+        await self.send_ai('/households/1/recipe-chat', {**body, 'turn_id': '3' * 32,
+                           'action': 'prepare', 'message': '', 'revision': 2})
         prepared, _ = await self.result()
         self.assertEqual(prepared['type'], 'response', prepared)
         recipe = prepared['data']['draft']['recipe']
@@ -122,6 +133,68 @@ class AiWireTests(unittest.IsolatedAsyncioTestCase):
                 self.assertNotIn('id', recipe)
             with closing(sqlite3.connect(self.database)) as db:
                 self.assertEqual(db.execute('SELECT title,revision FROM recipes WHERE id=1').fetchone(), ('Soup', 2))
+
+    async def test_cooking_context_survives_workers_and_is_private_to_each_user(self):
+        with closing(sqlite3.connect(self.database)) as db, db:
+            db.execute("INSERT INTO household_memberships VALUES (1,2,'member'),(2,1,'member')")
+        await self.auth(self.app, scope='ai')
+
+        async def chat(message, session, household='1'):
+            body = dict(request_id=session * 32, turn_id='1' * 32, mode='create',
+                        action='message', message=message, revision=0,
+                        user_id='2', cooking_context=[dict(person='self', preference='CLIENT INJECTION')])
+            await self.send_ai(f'/households/{household}/recipe-chat', body)
+            reply, _ = await self.result()
+            self.assertEqual(reply['type'], 'response', reply)
+            return reply['data']
+
+        learned = await chat('I dislike mushrooms.', 'd')
+        fact_id = learned['context_updates'][0]['id']
+        self.assertEqual(learned['context_revision'], 1)
+        self.assertNotIn('draft', learned)
+        await chat('My son Alex dislikes cilantro.', 'e')
+        remembered = await chat('Suggest dinner.', 'f')
+        self.assertIn('self: Dislikes mushrooms.', remembered['message'])
+        self.assertIn('my son Alex: Dislikes cilantro.', remembered['message'])
+        self.assertNotIn('CLIENT INJECTION', remembered['message'])
+        self.assertEqual(remembered['context_updates'], [])
+
+        await self.auth(self.app, token='bob', scope='ai')
+        other = await chat('Suggest dinner.', '1')
+        self.assertNotIn('mushrooms', other['message'])
+        self.assertNotIn('cilantro', other['message'])
+        await self.auth(self.app, token='alice', household='2', scope='ai')
+        household = await chat('Suggest dinner.', '2', household='2')
+        self.assertIn('mushrooms', household['message'])
+        self.assertNotIn('cilantro', household['message'])
+
+        await self.auth(self.app, scope='ai')
+        corrected = await chat('I like mushrooms now.', '3')
+        self.assertEqual(corrected['context_updates'][0]['action'], 'update')
+        self.assertEqual(corrected['context_updates'][0]['id'], fact_id)
+        replay = await chat('I dislike mushrooms.', 'd')
+        self.assertEqual(replay, learned)
+        current = await chat('Suggest dinner.', '4')
+        self.assertIn('Likes mushrooms.', current['message'])
+        self.assertNotIn('Dislikes mushrooms.', current['message'])
+        await chat('Forget my mushroom preference.', '5')
+        forgotten = await chat('Suggest dinner.', '6')
+        self.assertNotIn('mushrooms', forgotten['message'])
+        self.assertIn('cilantro', forgotten['message'])
+
+    async def test_membership_revocation_during_chat_does_not_commit_context(self):
+        await self.auth(self.app, scope='ai')
+        await self.send_ai('/households/1/recipe-chat', dict(
+            request_id='d' * 32, turn_id='1' * 32, mode='create',
+            action='message', message='I dislike mushrooms.', revision=0))
+        while (await self.message(self.app)).get('message') != 'Thinking about your recipe…':
+            pass
+        with closing(sqlite3.connect(self.database)) as db, db:
+            db.execute('DELETE FROM household_memberships WHERE user_id=1 AND household_id=1')
+        denied, _ = await self.result()
+        self.assertEqual(denied['status'], 404, denied)
+        profile = Path(self.runtime) / 'state' / 'recipe-user-context' / (hashlib.sha256(b'1').hexdigest() + '.json')
+        self.assertFalse(profile.exists(), 'Revoked requests must not durably learn preferences')
 
     async def test_household_admin_and_image_permissions(self):
         await self.auth(self.app, scope='ai')

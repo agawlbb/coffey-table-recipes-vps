@@ -15,6 +15,7 @@ try {
     };
     $service=new DataSocket($pdo,$verify,new ShoppingSocket($pdo,$verify,new HomeAssistantConnections($pdo),new ShoppingSyncRequests(CTR_STORAGE.'/shopping-sync-requests')),null,$categorize);
     $actor=$service->authenticate($request['token'],$request['household'],$request['scope']);
+    $config['before_recipe_chat_commit']=static fn()=> $service->authenticate($request['token'],$request['household'],$request['scope']);
     if (isset($request['category_ids'])) {
         $data=[];
         $images=new AiService($pdo,$config,CTR_STORAGE,$progress,$transport);
