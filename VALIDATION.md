@@ -289,7 +289,10 @@ trigger. No branch protection, history rewrite, app build or app release was add
 Task: repair parent/category duplication and category-picture clarification requests.
 Branch `fix/ai-import-categories` starts from canonical VPS main
 `287dc4d67a27c4d6a75515c19410e0721fc272ef`, separately from backend migration.
-This branch is not merged or deployed.
+The user approved merging this fix into `main` and removing the temporary branch.
+The fetched main remained at the original base, so integration adds no source
+changes to the already verified result. No build or deployment is authorized by
+this merge; the repository has no push-triggered workflows.
 
 AI first chooses an existing parent, then selects a suitable existing child under
 that parent or proposes a new child. The request schema constrains parent labels
