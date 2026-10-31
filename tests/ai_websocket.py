@@ -63,6 +63,66 @@ class AiWireTests(unittest.IsolatedAsyncioTestCase):
         with closing(sqlite3.connect(self.database)) as db:
             self.assertEqual(db.execute('SELECT COUNT(*) FROM recipes').fetchone()[0], initial_count)
 
+    async def test_recipe_chat_all_households_and_prepare_without_saving(self):
+        with closing(sqlite3.connect(self.database)) as db, db:
+            db.execute('UPDATE households SET ai_images_enabled=0 WHERE id=1')
+            count = db.execute('SELECT COUNT(*) FROM recipes').fetchone()[0]
+        await self.auth(self.app, scope='ai')
+        body = dict(request_id='a' * 32, turn_id='1' * 32, mode='create',
+                    action='message', message='Help me develop soup', revision=0)
+        await self.send_ai('/households/1/recipe-chat', body)
+        reply, events = await self.result()
+        self.assertEqual(reply['type'], 'response', reply)
+        self.assertEqual(reply['data']['revision'], 1)
+        self.assertNotIn('draft', reply['data'])
+        self.assertTrue(any(e.get('type') == 'progress' for e in events))
+        await self.send_ai('/households/1/recipe-chat', {**body, 'turn_id': '2' * 32,
+                           'action': 'prepare', 'message': '', 'revision': 1})
+        prepared, _ = await self.result()
+        self.assertEqual(prepared['type'], 'response', prepared)
+        recipe = prepared['data']['draft']['recipe']
+        self.assertEqual(recipe['source_type'], 'ai_created')
+        self.assertIn('edit_options', recipe)
+        self.assertNotIn('id', recipe)
+        with closing(sqlite3.connect(self.database)) as db:
+            self.assertEqual(db.execute('SELECT COUNT(*) FROM recipes').fetchone()[0], count)
+        for path, changes, status in [
+            ('/households/2/recipe-chat', {}, 404),
+            ('/households/1/recipe-chat', dict(mode='edit', recipe_id='2'), 404),
+            ('/households/1/recipe-chat', dict(mode='variation', recipe_id='2'), 404),
+        ]:
+            await self.send_ai(path, {**body, **changes})
+            denied, _ = await self.result()
+            self.assertEqual(denied['status'], status, denied)
+
+    async def test_recipe_chat_variation_and_edit_keep_original_unsaved(self):
+        # The fixture must not fetch any real parent photo.
+        with closing(sqlite3.connect(self.database)) as db, db:
+            db.execute("UPDATE recipe_photos SET storage_key='unavailable-fixture'")
+        await self.auth(self.app, scope='ai')
+        for mode in ['variation', 'edit']:
+            body = dict(request_id=('b' if mode == 'edit' else 'c') * 32,
+                        turn_id='1' * 32, mode=mode, recipe_id='1',
+                        action='message', message='Improve this soup', revision=0)
+            await self.send_ai('/households/1/recipe-chat', body)
+            response, _ = await self.result()
+            self.assertEqual(response['type'], 'response', response)
+            await self.send_ai('/households/1/recipe-chat', {**body, 'turn_id': '2' * 32,
+                               'action': 'prepare', 'message': '', 'revision': 1})
+            prepared, _ = await self.result()
+            self.assertEqual(prepared['type'], 'response', prepared)
+            recipe = prepared['data']['draft']['recipe']
+            if mode == 'edit':
+                self.assertEqual(str(recipe['id']), '1')
+                self.assertEqual(str(recipe['revision']), '2')
+                self.assertEqual(len(recipe['photos']), 1)
+            else:
+                self.assertEqual(recipe['parent_recipe_id'], '1')
+                self.assertEqual(recipe['source_type'], 'ai_variation')
+                self.assertNotIn('id', recipe)
+            with closing(sqlite3.connect(self.database)) as db:
+                self.assertEqual(db.execute('SELECT title,revision FROM recipes WHERE id=1').fetchone(), ('Soup', 2))
+
     async def test_household_admin_and_image_permissions(self):
         await self.auth(self.app, scope='ai')
         for path, body, status in [

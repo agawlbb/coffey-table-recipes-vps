@@ -6,7 +6,7 @@ final class AiService {
 
     public static function matches(string $path): bool {
         $route=parse_url($path,PHP_URL_PATH);
-        return is_string($route) && (preg_match('#^/households/[1-9][0-9]*/(?:recipe-import|recipe-photo|recipe-category|category-image|recipes/[1-9][0-9]*/variation)$#D',$route)
+        return is_string($route) && (preg_match('#^/households/[1-9][0-9]*/(?:recipe-chat|recipe-import|recipe-photo|recipe-category|category-image|recipes/[1-9][0-9]*/variation)$#D',$route)
             || preg_match('#^/admin/parent-categories(?:/[1-9][0-9]*/category-image)?$#D',$route));
     }
 
@@ -51,6 +51,18 @@ final class AiService {
         if ($part==='recipe-category') {
             if (!is_string($body['title']??null)) throw new HttpError(422,'invalid_recipe','Enter a recipe title.');
             return ['category'=>(new BlankRecipeCategoryService($config,$this->storage,$this->transport))->categorize($body['title'], $options['categories'],$user)];
+        }
+        if ($part==='recipe-chat') {
+            $mode=$body['mode']??null;
+            $source=null;
+            if (in_array($mode,['variation','edit'],true)) {
+                $id=$body['recipe_id']??null;
+                if (!is_string($id) || !preg_match('/^[1-9][0-9]{0,18}$/D',$id)) throw new HttpError(422,'invalid_recipe','Choose a recipe.');
+                $source=$recipes->detail($user,$household,$id);
+            }
+            $chat=(new RecipeChatService($config,$this->storage,$this->transport))->handle($body,$user,$household,$source,$options['categories']);
+            if (isset($chat['draft'])) $chat['draft']['recipe']['edit_options']=$options;
+            return $chat;
         }
         if ($part==='recipe-import') {
             $draft=(new RecipeImportService($config,$this->storage,$this->transport))->analyze($body,$user,$options['categories']);

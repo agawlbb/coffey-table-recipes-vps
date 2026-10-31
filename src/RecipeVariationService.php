@@ -60,12 +60,12 @@ final class RecipeVariationService
         return $policy;
     }
 
-    public function analyze(array $source, array $body, string $userId, string $householdId, array $categories = []): array {
+    public function analyze(array $source, array $body, string $userId, string $householdId, array $categories = [], bool $agreedRecipe = false): array {
         self::accessPolicy($this->config);
         $changes = $body['changes'] ?? null;
         $requestId = $body['request_id'] ?? null;
         $answers = $body['answers'] ?? [];
-        if (!is_string($changes) || trim($changes) === '' || mb_strlen($changes) > 4000
+        if (!is_string($changes) || trim($changes) === '' || mb_strlen($changes) > ($agreedRecipe ? 40000 : 4000)
             || !is_string($requestId) || !preg_match('/^[a-f0-9]{32}$/D', $requestId)
             || !is_array($answers) || array_values($answers) !== $answers || count($answers) > 24) {
             throw new HttpError(422, 'invalid_variation', 'Describe the changes in at most 4,000 characters.');
@@ -106,7 +106,7 @@ final class RecipeVariationService
         if (strlen($text)>60000) throw new HttpError(422,'invalid_variation','This recipe is too long to vary automatically.');
         $cover=$this->parentCover($source);
         $coverIdentity=$cover===null ? null : [hash('sha256',$cover['image_base64']),$cover['caption'],$cover['attribution']];
-        $fingerprint = hash('sha256', json_encode(['variation-main-title-label-v6',$text,$this->config['variation_model'] ?? $this->config['model'],$categories,$coverIdentity], JSON_THROW_ON_ERROR));
+        $fingerprint = hash('sha256', json_encode([($agreedRecipe ? 'variation-agreed-recipe-v1' : 'variation-main-title-label-v6'),$text,$this->config['variation_model'] ?? $this->config['model'],$categories,$coverIdentity], JSON_THROW_ON_ERROR));
         $directory = $this->storage.'/variation-drafts';
         if (!is_dir($directory) && !mkdir($directory,0700,true) && !is_dir($directory)) throw new RuntimeException('Cannot prepare variation draft storage.');
         $path = $directory.'/'.$identity.'.json';
@@ -131,6 +131,7 @@ final class RecipeVariationService
             if (count($stored['drafts'] ?? []) >= 8) throw new HttpError(429,'variation_limit','This variation has reached its clarification limit. Start a new request.');
             $config = $this->config;
             $config['model'] = $config['variation_model'] ?? $config['model'];
+            $config['variation_agreed_recipe'] = $agreedRecipe;
             $language=$source['original_language'] ?? null;
             if (is_string($language) && preg_match('/^[a-zA-Z]{2,3}(?:-[a-zA-Z0-9]{2,8})*$/D',$language)) {
                 $config['variation_language']=$language;
