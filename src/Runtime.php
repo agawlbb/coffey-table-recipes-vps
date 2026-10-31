@@ -39,3 +39,18 @@ function runtimeAccountConfig(): array {
         'firebase_service_account_file'=>$private.'/firebase-admin.json','smtp'=>$smtp,
         'app_url'=>'https://coffeybean.com/CoffeyTableRecipes/app/'];
 }
+
+function runtimeAccountService(PDO $pdo,Closure $verify,?callable $progress=null): AccountService {
+    $config=runtimeAccountConfig(); $directory=new FirebaseAccountDirectory($config);
+    return new AccountService($pdo,$verify,[$directory,'requireAccount'],[$directory,'lookup'],
+        [new InvitationMail($config),'send'],[$directory,'verificationLink'],[new VerificationMail($config),'send'],
+        $config['app_url'],[$directory,'delete'],[$directory,'all'],$progress);
+}
+function runtimeHomeAssistantConfig(): array {
+    $private=getenv('CTR_PRIVATE') ?: '/run/ctr-private';
+    $file=$private.'/home-assistant.json';
+    if (!is_file($file)) throw new HttpError(503,'auth_unavailable','Home Assistant sign-in is not configured.');
+    $data=json_decode(file_get_contents($file),true,16,JSON_THROW_ON_ERROR);
+    if (!is_string($data['api_key']??null) || $data['api_key']==='') throw new HttpError(503,'auth_unavailable','Home Assistant sign-in is not configured.');
+    return ['api_key'=>$data['api_key']];
+}

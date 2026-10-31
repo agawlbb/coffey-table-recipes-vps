@@ -11,8 +11,8 @@ imageCheck($socket->missingCategoryImages($actor,$data)===['11'],'An inherited A
 $pdo->exec("UPDATE recipe_categories SET image_key='ai-11' WHERE id=11");
 imageCheck($socket->missingCategoryImages($actor,$data)===[],'Existing own artwork must not be regenerated');
 $images=new CategoryImageService($pdo,new RecipePhotoService(['api_key'=>'fixture-only'],CTR_STORAGE,static function(){throw new RuntimeException('Unexpected generation');}),CTR_STORAGE.'/media/recipes','https://ctr.coffeybean.com/media/recipes');
-imageCheck($images->ensure('11','1','1')==='https://coffeybean.com/CoffeyTableRecipes/media/recipes/category-11.jpg','Existing original-host artwork must retain its URL');
+imageCheck($images->ensure('11','1','1')==='https://ctr.coffeybean.com/media/recipes/category-11.jpg','Existing artwork must use its VPS URL');
 $pdo->exec("UPDATE recipe_categories SET image_key='' WHERE id=11; UPDATE households SET ai_images_enabled=0 WHERE id=1");
 imageCheck($socket->missingCategoryImages($actor,$data)===[],'Disabled household must not generate automatic artwork');
 imageCheck($socket->missingCategoryImages($actor,['recipe'=>[]])===[],'Unsaved AI drafts must not trigger artwork');
-echo "Category ownership, inherited-image detection, original-host reuse and permission checks passed\n";
+echo "Category ownership, inherited-image detection, VPS artwork reuse and permission checks passed\n";

@@ -30,18 +30,13 @@ final class RecipeVariationService
         $cover ??= $photos[0] ?? null;
         if (!is_array($cover)) return null;
         $key=$cover['storage_key'] ?? '';
-        if (!is_string($key) || !preg_match('#^(?:media/(?:recipes/[a-f0-9]{48}|recipe-photos/[a-f0-9]{64})|vps/recipes/[a-f0-9]{48})\.(?:jpg|png|webp)$#D',$key)) return null;
+        if (!is_string($key) || !preg_match('#^(?:media|vps)/recipes/[a-f0-9]{48}\.(?:jpg|png|webp)$#D',$key)) return null;
         if ($this->coverReader!==null) {
             $bytes=($this->coverReader)($key);
         } else {
-            if (str_starts_with($key,'vps/recipes/')) {
-                $path=$this->storage.'/media/recipes/'.basename($key);
-                $bytes=is_readable($path) ? @file_get_contents($path,false,null,0,5*1024*1024+1) : false;
-            } else {
-                // Existing photos remain on shared hosting; never fetch a client-supplied URL.
-                try { $bytes=RecipeImportTools::verifyImage('https://coffeybean.com/CoffeyTableRecipes/'.$key,true)['bytes']; }
-                catch (Throwable $error) { return null; }
-            }
+            // The authorized managed cover now lives on the VPS; no hosting callback.
+            $path=$this->storage.'/media/recipes/'.basename($key);
+            $bytes=!is_link($path) && is_readable($path) ? @file_get_contents($path,false,null,0,5*1024*1024+1) : false;
         }
         if (!is_string($bytes) || strlen($bytes)>5*1024*1024) return null;
         $info=@getimagesizefromstring($bytes);

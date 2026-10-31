@@ -1,13 +1,13 @@
-# Install in /opt/vps/caddy/conf/sites/ only at approved service deployment.
-# Caddy terminates TLS and handles the WebSocket Upgrade automatically.
+# Public recipe service. The main domain and static Flutter hosting stay unchanged.
 ctr.coffeybean.com {
-	handle /shopping {
-		reverse_proxy ctr-backend:8080
-	}
-	handle /media/recipes/* {
-		reverse_proxy ctr-backend:8081
-	}
-	handle {
-		respond 404
-	}
+    handle /shopping {
+        reverse_proxy ctr-backend:8080
+    }
+    @http path /recipes/* /api/v1/* /health /media/recipes/* /assets/email/coffey_table.jpg /.well-known/assetlinks.json /.well-known/apple-app-site-association
+    handle @http {
+        reverse_proxy ctr-backend:8081
+    }
+    handle {
+        respond 404
+    }
 }

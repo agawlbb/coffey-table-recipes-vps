@@ -5,10 +5,10 @@ declare(strict_types=1);
 final class AccountService {
     public function __construct(private PDO $pdo,private Closure $verify,private $requireAccount,
         private $lookup,private $sendInvitation,private $generateVerification,
-        private $sendVerification,private string $appUrl) {}
+        private $sendVerification,private string $appUrl,private $deleteFirebase=null,private $listFirebase=null,private $progress=null) {}
 
     public static function matches(string $path): bool {
-        return preg_match('#^/(?:me(?:/verification-email|/child-mode)?|admin/users/[1-9][0-9]*/reset-child-mode|households|households/[1-9][0-9]*/people/[1-9][0-9]*/invitations|invitations/[1-9][0-9]*/respond)$#D',parse_url($path,PHP_URL_PATH)?:'')===1;
+        return preg_match('#^/(?:me(?:/verification-email|/child-mode)?|admin/(?:users|households|households/[1-9][0-9]*/ai-images|(?:users|people|firebase)/[A-Za-z0-9_-]{1,128}/delete|users/[1-9][0-9]*/reset-child-mode)|households|households/[1-9][0-9]*/home-assistant-connections(?:/[a-f0-9]{64})?|households/[1-9][0-9]*/people/[1-9][0-9]*/invitations|invitations/[1-9][0-9]*/respond)$#D',parse_url($path,PHP_URL_PATH)?:'')===1;
     }
 
     public function handle(string $token,string $path,?array $body): array {
@@ -32,6 +32,33 @@ final class AccountService {
             $uid=$q->fetchColumn();
             if (!is_string($uid)) throw new HttpError(404,'user_not_found','User not found.');
             return $modes->requestReset($uid);
+        }
+        if (preg_match('#^/households/([1-9][0-9]*)/home-assistant-connections(?:/([a-f0-9]{64}))?$#D',$route,$ha)) {
+            $households->membership($user['id'],$ha[1],true);
+            $connections=new HomeAssistantConnections($this->pdo);
+            if (isset($ha[2])) {
+                if ($body===null) throw new HttpError(405,'method_not_allowed','Use a write request.');
+                $connections->revokeById($ha[1],$ha[2]); return ['revoked'=>true];
+            }
+            return $body===null ? ['connections'=>$connections->list($ha[1])] : $connections->create($ha[1]);
+        }
+        if (str_starts_with($route,'/admin/')) {
+            $admin=new AdministrationService($this->pdo,$this->deleteFirebase??static function(){throw new HttpError(503,'account_delete_unavailable','Account deletion is not configured.');},$this->listFirebase);
+            $admin->requireAdministrator($user['id']);
+            if ($this->progress!==null) ($this->progress)($body===null?'Reading administration data…':'Applying administration change…');
+            if ($body===null && $route==='/admin/users') return ['users'=>$admin->users($user['id']),'people'=>$admin->people($user['id']),'households'=>$admin->households($user['id'])];
+            if ($body===null && $route==='/admin/households') return ['households'=>$admin->households($user['id'])];
+            if ($body!==null && preg_match('#^/admin/households/([1-9][0-9]*)/ai-images$#D',$route,$permission)) return ['household'=>$admin->setAiImages($user['id'],$permission[1],$body['enabled']??null)];
+            if ($body!==null && preg_match('#^/admin/(users|people|firebase)/([A-Za-z0-9_-]{1,128})/delete$#D',$route,$target)) {
+                $confirmed=($body['confirm']??false)===true;
+                match($target[1]) {
+                    'users'=>$admin->delete($user['id'],$target[2],$confirmed),
+                    'people'=>$admin->deletePerson($user['id'],$target[2],$confirmed),
+                    'firebase'=>$admin->deleteFirebaseOnly($user['id'],$target[2],$confirmed),
+                };
+                return ['deleted'=>true];
+            }
+            throw new HttpError(405,'method_not_allowed','Unsupported administration request.');
         }
         $invitations=new InvitationService($this->pdo,$households,$this->lookup,$this->sendInvitation,$this->appUrl);
         if ($route==='/me' && $body===null) {

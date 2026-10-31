@@ -20,6 +20,45 @@ class AccountWireTests(unittest.IsolatedAsyncioTestCase):
     auth = data.DataWireTests.auth
     request = data.DataWireTests.request
 
+    async def test_http_ha_setup_and_revoke_on_real_listener(self):
+        await self.auth(self.app, 'account', 'new', None)
+        household=(await self.request(self.app, '/households', dict(name='Family',person_name='Owner')))['data']['household']['id']
+        base=f'http://127.0.0.1:{self.media_port}/api/v1'
+        async with self.session.get(base+'/home-assistant/auth-config') as response:
+            self.assertEqual(await response.json(), {'api_key':'public-fixture'})
+        headers={'Authorization':'Bearer new'}
+        async with self.session.get(base+'/households',headers=headers) as response:
+            self.assertEqual((await response.json())['households'][0]['id'],household)
+        async with self.session.post(base+f'/households/{household}/home-assistant-connections',headers=headers,json={}) as response:
+            self.assertEqual(response.status,200)
+            token=(await response.json())['token']
+        async with self.session.delete(base+'/home-assistant/connection',headers={'Authorization':'Bearer '+token}) as response:
+            self.assertEqual(await response.json(),{'revoked':True})
+
+    async def test_slow_admin_reads_report_progress_without_blocking_heartbeat(self):
+        await self.auth(self.app,'account','admin',None)
+        await self.app.send_json(dict(v=1,type='request',id='users',path='/admin/users'))
+        progress=await shopping.ShoppingWireTests.message(self,self.app)
+        self.assertEqual(progress['type'],'progress')
+        await self.app.send_json(dict(v=1,type='ping'))
+        self.assertEqual((await asyncio.wait_for(self.message(self.app),.7))['type'],'pong')
+        result=await self.message(self.app)
+        self.assertEqual(result['id'],'users')
+        self.assertTrue(result['data']['users'])
+
+    async def test_confirmed_delete_finishes_after_admin_disconnects(self):
+        await self.auth(self.app,'account','guest',None)
+        guest=(await self.request(self.app,'/me'))['data']['user']['id']
+        admin=await self.connect()
+        await self.auth(admin,'account','admin',None)
+        await admin.send_json(dict(v=1,type='request',id='delete',path=f'/admin/users/{guest}/delete',body={'confirm':True}))
+        self.assertEqual((await shopping.ShoppingWireTests.message(self,admin))['type'],'progress')
+        await asyncio.sleep(.15)
+        await admin.close()
+        await asyncio.sleep(1.5)
+        with closing(sqlite3.connect(self.database)) as db:
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM users WHERE firebase_uid='guest'").fetchone()[0],0)
+
     async def test_new_identity_bootstrap_and_setup_without_household(self):
         self.assertEqual((await self.auth(self.app, 'account', 'new', None))['type'], 'ready')
         with closing(sqlite3.connect(self.database)) as db:
@@ -49,12 +88,12 @@ class AccountWireTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual((await self.auth(ws, 'account', token, household))['status'], status)
         await self.auth(self.app, 'account', 'deleted', None)
         self.assertEqual((await self.request(self.app, '/me'))['error']['code'], 'account_deleted')
-        for path in ['/admin/users', '/households/1/recipes', '/me/timers']:
+        for path in ['/households/1/recipes', '/me/timers']:
             other = await self.connect()
             await self.auth(other, 'account', 'new', None)
             self.assertEqual((await self.request(other, path))['status'], 404)
 
-    async def test_identity_change_cancels_previous_mail_response(self):
+    async def test_identity_change_hides_previous_mutation_response(self):
         await self.auth(self.app, 'account', 'new', None)
         await self.app.send_json(dict(v=1, type='request', id='old-mail', path='/me/verification-email', body={}))
         await asyncio.sleep(.15)

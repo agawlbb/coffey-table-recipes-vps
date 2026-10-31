@@ -42,7 +42,7 @@ final class DataSocket
             'shopping'=>$this->shopping->snapshot($actor),
             'household'=>['shopping'=>$this->shopping->snapshot($actor),
                 'library'=>(new HouseholdSnapshot($this->pdo,new HouseholdService($this->pdo),
-                    'https://coffeybean.com/CoffeyTableRecipes/media/recipes'))->read($actor['user'],$actor['household'])],
+                    'https://ctr.coffeybean.com/media/recipes'))->read($actor['user'],$actor['household'])],
             'timers'=>(new TimerSyncService($this->pdo))->list($actor['user']),
             default=>[],
         };
@@ -116,7 +116,7 @@ final class DataSocket
             if ($body===null && $action==='share') {
                 $recipe=$recipes->detail($user,$household,$id);
                 if ($recipe['source_type']==='blank') throw new HttpError(422,'blank_recipe','Import this recipe before sharing it.');
-                return ['url'=>'https://coffeybean.com/CoffeyTableRecipes/share.php?id='.$id];
+                return ['url'=>'https://ctr.coffeybean.com/recipes/'.$id];
             }
             if ($body!==null && $action==='attach') return (new RecipeMembership($this->pdo,$h))->attach($user,$household,$id);
             if ($body!==null && $action==='delete') return (new RecipeDeletionService($this->pdo,$h))->delete($user,$household,$id,$body);

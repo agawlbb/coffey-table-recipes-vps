@@ -93,7 +93,7 @@ $worker->onMessage = static function (TcpConnection $c, string $text) use (&$cli
             $scope=$m['scope']??'shopping';
             if (!is_string($scope)) throw new HttpError(422,'invalid_scope','Invalid scope.');
             $service = $factory(); $actor = $service->authenticate($m['token'], $household, $scope);
-            $accountJobs->stop((string)$c->id);
+            $accountJobs->disconnect((string)$c->id);
             $entry['scope']=$scope; $entry['actor']=$actor;
             $entry['token']=$m['token']; $entry['household']=$actor['household'];
             $data=in_array($scope,['ai','account'],true) ? (object)[] : $service->snapshot($actor);
@@ -114,7 +114,14 @@ $worker->onMessage = static function (TcpConnection $c, string $text) use (&$cli
                 if (strlen($text)>128*1024) throw new HttpError(413,'request_too_large','Account request is too large.');
                 $service->authenticate($entry['token'],null,'account');
                 $accountJobs->start((string)$c->id,['token'=>$entry['token'],'path'=>$m['path'],'body'=>$body],
-                    static function(array $event) use ($c,$id,$send): void { $send($c,$event+['id'=>$id]); },static function(){});
+                    static function(array $event) use ($c,$id,$send): void { $send($c,$event+['id'=>$id]); },static function(bool $success) use (&$clients,$factory):void {
+                        if (!$success) return;
+                        foreach ($clients as $client) {
+                            if (!isset($client['token'])) continue;
+                            try { $factory()->authenticate($client['token'],$client['household'],$client['scope']); }
+                            catch (Throwable $error) { $client['connection']->close(); }
+                        }
+                    },$body!==null);
                 return;
             }
             if ($entry['scope']==='account') throw new HttpError(404,'not_found','Account endpoint not found.');
@@ -145,7 +152,7 @@ $worker->onMessage = static function (TcpConnection $c, string $text) use (&$cli
     catch (PDOException $e) { $factory(true); $send($c,['type'=>'error','id'=>$id,'status'=>503,'error'=>['message'=>'Database connection interrupted. Retry shortly.']]); }
     catch (Throwable $e) { $send($c, ['type'=>'error','id'=>$id,'status'=>503,'error'=>['message'=>'Data synchronization temporarily unavailable.']]); }
 };
-$worker->onClose = static function (TcpConnection $c) use (&$clients,$aiJobs,$accountJobs): void { $aiJobs->stop((string)$c->id); $accountJobs->stop((string)$c->id); unset($clients[$c->id]); };
+$worker->onClose = static function (TcpConnection $c) use (&$clients,$aiJobs,$accountJobs): void { $aiJobs->stop((string)$c->id); $accountJobs->disconnect((string)$c->id); unset($clients[$c->id]); };
 $worker->onWorkerStart = static function () use (&$clients,$aiJobs,$accountJobs): void {
     Timer::add(0.1,static fn()=>$accountJobs->poll());
     Timer::add(0.1,static fn()=>$aiJobs->poll());
@@ -155,15 +162,31 @@ $worker->onWorkerStart = static function () use (&$clients,$aiJobs,$accountJobs)
         }
     });
 };
+$httpFactory ??= static function(bool $reset=false): ?HttpService {
+    static $service=null;
+    if ($reset) { $service=null; return null; }
+    if ($service!==null) return $service;
+    return $service=new HttpService(Closure::fromCallable('runtimeDatabase'),static fn()=>runtimeAccountService(runtimeDatabase(),runtimeVerifier()),'runtimeHomeAssistantConfig',CTR_STORAGE.'/media/recipes',__DIR__.'/associations');
+};
 $media = new Worker(getenv('CTR_MEDIA_LISTEN') ?: 'http://0.0.0.0:8081');
 $media->count=1;
-$media->onMessage=static function(TcpConnection $c, Workerman\Protocols\Http\Request $request): void {
-    $path=$request->path();
-    if ($request->method()!=='GET' || !preg_match('#^/media/recipes/((?:[a-f0-9]{48}\.(?:jpg|png|webp)|category-[1-9][0-9]*\.jpg))$#D',$path,$m)
-        || !is_file($file=CTR_STORAGE.'/media/recipes/'.$m[1])) {
-        $c->send(new Workerman\Protocols\Http\Response(404,[],'Not found')); return;
+$media->onMessage=static function(TcpConnection $c, Workerman\Protocols\Http\Request $request) use ($httpFactory): void {
+    try {
+        $result=$httpFactory()->handle($request->method(),$request->uri(),$request->header(),$request->rawBody());
+        $length=$result['headers']['Content-Length']??null;
+        // Workerman always appends its own body length, even when supplied.
+        unset($result['headers']['Content-Length']);
+        $response=new Workerman\Protocols\Http\Response($result['status'],$result['headers'],$result['body']??'');
+        if (isset($result['file']) && $request->method()!=='HEAD') $response->withFile($result['file']);
+        if ($request->method()==='HEAD' && $length!==null) {
+            // A HEAD response advertises the GET length but sends no body.
+            $c->send(str_replace("Content-Length: 0\r\n","Content-Length: ".$length."\r\n",(string)$response),true);
+            return;
+        }
+        $c->send($response);
+    } catch (Throwable $error) {
+        if ($error instanceof PDOException) $httpFactory(true);
+        $c->send(new Workerman\Protocols\Http\Response(503,['Content-Type'=>'application/json','Cache-Control'=>'no-store'],'{"error":{"code":"service_unavailable","message":"Recipe service temporarily unavailable."}}'));
     }
-    $response=new Workerman\Protocols\Http\Response(200,['Access-Control-Allow-Origin'=>'*','X-Content-Type-Options'=>'nosniff']);
-    $response->withFile($file); $c->send($response);
 };
 Worker::runAll();

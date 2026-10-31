@@ -4,7 +4,7 @@ declare(strict_types=1);
 /** Shared category artwork generated once, independently of recipe persistence. */
 final class CategoryImageService {
     public static function imageUrl(string $id,string $fallback): string {
-        $base=is_file(CTR_STORAGE.'/media/recipes/category-'.$id.'.jpg') ? 'https://ctr.coffeybean.com/media/recipes' : rtrim($fallback,'/');
+        $base='https://ctr.coffeybean.com/media/recipes';
         return $base.'/category-'.$id.'.jpg';
     }
     public function __construct(private PDO $pdo,private RecipePhotoService $photos,private string $directory,private string $url) {}
@@ -14,7 +14,7 @@ final class CategoryImageService {
         $q->execute([$id,$householdId]); $category=$q->fetch(PDO::FETCH_ASSOC);
         if (!$category || !str_starts_with($category['slug'],'import-')) throw new HttpError(404,'category_not_found','New category not found.');
         // An existing category owns its image even when it is still hosted on InMotion.
-        if ($category['image_key']==='ai-'.$id) return self::imageUrl($id,'https://coffeybean.com/CoffeyTableRecipes/media/recipes');
+        if ($category['image_key']==='ai-'.$id) return self::imageUrl($id,'https://ctr.coffeybean.com/media/recipes');
         return $this->publish($id,$category,$userId,fn()=>(new HouseholdService($this->pdo))->requireAiImages($userId,$householdId));
     }
 

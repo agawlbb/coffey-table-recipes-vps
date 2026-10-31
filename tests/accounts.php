@@ -37,7 +37,7 @@ $accepted=$service->handle('guest','/invitations/'.$invite['id'].'/respond',['de
 checkAccount($accepted['invitation']['status']==='accepted','Invitation acceptance failed.');
 checkAccount(count($service->handle('guest','/me',null)['households'])===1,'Accepted membership missing.');
 accountError(fn()=>$service->handle('guest','/invitations/'.$invite['id'].'/respond',['decision'=>'accept']),409,'invitation_not_pending');
-accountError(fn()=>$service->handle('new','/admin/users',null),404,'not_found');
+accountError(fn()=>$service->handle('new','/admin/users',null),403,'administrator_required');
 $pdo->exec("INSERT INTO household_people(household_id,display_name) VALUES(1,'Another guest')");
 $person=(string)$pdo->lastInsertId();
 $failing=accountFixture($pdo,static function() { throw new RuntimeException('Simulated SMTP outage'); });
