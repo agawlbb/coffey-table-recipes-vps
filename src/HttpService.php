@@ -25,14 +25,14 @@ final class HttpService {
                 $this->readOnly($method);
                 $recipe=RecipeShare::load($this->database(),$match[1]);
                 foreach ($recipe['photos'] as &$photo) {
-                    if (preg_match('#^(?:media|vps)/recipes/([a-f0-9]{48}\.(?:jpg|png|webp))$#D',$photo['storage_key']??'',$file)) $photo['source_url']='https://ctr.coffeybean.com/media/recipes/'.$file[1];
+                    if (preg_match('#^(?:media|vps)/recipes/((?:[a-f0-9]{48}|[a-f0-9]{64})\.(?:jpg|png|webp))$#D',$photo['storage_key']??'',$file)) $photo['source_url']='https://ctr.coffeybean.com/media/recipes/'.$file[1];
                 }
                 unset($photo);
                 $html=recipeSharePage($recipe);
                 return ['status'=>200,'headers'=>$base+$this->pageHeaders()+['Content-Length'=>(string)strlen($html)],'body'=>$method==='HEAD'?'':$html];
             }
             if ($path==='/assets/email/coffey_table.jpg') return $this->file($method,CTR_ROOT.'/assets/email/coffey_table.jpg','image/jpeg',$base);
-            if (preg_match('#^/media/recipes/((?:[a-f0-9]{48}\.(?:jpg|png|webp)|category-[1-9][0-9]*\.jpg))$#D',$path,$match)) {
+            if (preg_match('#^/media/recipes/((?:(?:[a-f0-9]{48}|[a-f0-9]{64})\.(?:jpg|png|webp)|category-[1-9][0-9]*\.jpg))$#D',$path,$match)) {
                 $mime=match(strtolower(pathinfo($match[1],PATHINFO_EXTENSION))) {'jpg'=>'image/jpeg','png'=>'image/png','webp'=>'image/webp'};
                 return $this->file($method,$this->mediaDirectory.'/'.$match[1],$mime,$base+['Access-Control-Allow-Origin'=>'*']);
             }

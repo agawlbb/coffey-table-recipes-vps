@@ -147,7 +147,7 @@ final class RecipeService
         foreach ($items as &$item) {
             $item['family_representative_id']=$representatives[$item['id']] ?? $item['id'];
             $item['is_variation'] = $item['parent_recipe_id'] !== null;
-            if (preg_match('#^(?:media|vps)/recipes/([a-f0-9]{48}\.(?:jpg|png|webp))$#',(string)($item['photo_storage_key'] ?? ''),$match)) $item['photo_url']=rtrim($this->mediaUrl,'/').'/'.$match[1];
+            if (preg_match('#^(?:media|vps)/recipes/((?:[a-f0-9]{48}|[a-f0-9]{64})\.(?:jpg|png|webp))$#',(string)($item['photo_storage_key'] ?? ''),$match)) $item['photo_url']=rtrim($this->mediaUrl,'/').'/'.$match[1];
             unset($item['photo_storage_key']);
         } unset($item);
         $hasMore = count($items) > 30;
@@ -175,7 +175,7 @@ final class RecipeService
         }
         foreach ($recipe['photos'] as &$photo) {
             $storage=$photo['storage_key'] ?? '';
-            if (preg_match('#^(?:media|vps)/recipes/([a-f0-9]{48}\.(?:jpg|png|webp))$#',$storage,$match)) $photo['source_url']=rtrim($this->mediaUrl,'/').'/'.$match[1];
+            if (preg_match('#^(?:media|vps)/recipes/((?:[a-f0-9]{48}|[a-f0-9]{64})\.(?:jpg|png|webp))$#',$storage,$match)) $photo['source_url']=rtrim($this->mediaUrl,'/').'/'.$match[1];
         } unset($photo);
         $recipe['actions'] = $this->rows('SELECT * FROM recipe_step_actions WHERE household_id=? AND recipe_id=? ORDER BY step_id,position,id', [$householdId, $recipeId]);
         $recipe['tags'] = $this->rows('SELECT kind,label FROM recipe_tags WHERE household_id=? AND recipe_id=? ORDER BY kind,label', [$householdId, $recipeId]);

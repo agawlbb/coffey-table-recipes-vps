@@ -157,7 +157,7 @@ try {
     expectVariation($coverSource===$sourceBefore,'Cover review never mutates the source');
     $localDirectory=$directory.'/media/recipes';
     mkdir($localDirectory,0755,true);
-    $localKey='vps/recipes/'.str_repeat('e',48).'.png';
+    $localKey='vps/recipes/'.str_repeat('e',64).'.png';
     file_put_contents($localDirectory.'/'.basename($localKey),$imageBytes);
     $localSource=$coverSource;
     $localSource['photos'][1]['storage_key']=$localKey;

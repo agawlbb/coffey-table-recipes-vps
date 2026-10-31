@@ -91,7 +91,7 @@ checkTrash(count($trash->recentlyDeleted('1','1')['recipes'])===0,'Restored reci
 checkTrash($trash->restore('1','1','1')['recipe']['revision']==='3','Restore retry changes revision');
 $media=dirname(__DIR__).'/storage/trash-fixture-'.bin2hex(random_bytes(8));
 if (!mkdir($media,0700)) throw new RuntimeException('Fixture directory unavailable');
-$shared=str_repeat('a',48).'.jpg'; $owned=str_repeat('b',48).'.png';
+$shared=str_repeat('a',48).'.jpg'; $owned=str_repeat('b',64).'.png';
 file_put_contents($media.'/'.$shared,'shared fixture'); file_put_contents($media.'/'.$owned,'owned fixture');
 $q=$pdo->prepare('INSERT INTO recipe_photos(id,household_id,recipe_id,position,storage_key) VALUES (?,?,?,?,?)');
 $q->execute([1,1,1,0,'media/recipes/'.$shared]); $q->execute([2,2,3,0,'media/recipes/'.$shared]);

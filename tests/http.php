@@ -18,7 +18,7 @@ foreach ($tables as $table) {
 $pdo->exec("INSERT INTO recipes(id,household_id,title,source_type,revision,source_text) VALUES(1,1,'Soup <script>x</script>','manual',1,'PRIVATE');
  INSERT INTO recipes(id,title,source_type) VALUES(2,'Blank','blank');
  INSERT INTO recipes(id,title,deleted_at) VALUES(3,'Trash','2026-10-01');");
-$name=str_repeat('a',48).'.jpg';
+$name=str_repeat('a',64).'.jpg';
 $pdo->prepare('INSERT INTO recipe_photos(id,household_id,recipe_id,position,source_url,storage_key) VALUES(1,1,1,0,?,?)')->execute(['https://coffeybean.com/CoffeyTableRecipes/media/recipes/'.$name,'media/recipes/'.$name]);
 $directory=sys_get_temp_dir().'/ctr-http-'.bin2hex(random_bytes(8)); mkdir($directory);
 file_put_contents($directory.'/'.$name,'image-fixture');

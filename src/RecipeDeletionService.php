@@ -89,7 +89,7 @@ final class RecipeDeletionService
                 $this->pdo->prepare('DELETE FROM recipes WHERE id=?')->execute([$id]);
                 $this->pdo->commit(); $count++;
                 foreach (array_unique($files) as $key) {
-                    if (!preg_match('#^(?:media|vps)/recipes/([a-f0-9]{48}\.(?:jpg|png|webp))$#', (string)$key, $match)) continue;
+                    if (!preg_match('#^(?:media|vps)/recipes/((?:[a-f0-9]{48}|[a-f0-9]{64})\.(?:jpg|png|webp))$#', (string)$key, $match)) continue;
                     $q = $this->pdo->prepare('SELECT COUNT(*) FROM recipe_photos WHERE storage_key=?'); $q->execute([$key]);
                     if ((int)$q->fetchColumn() === 0) {
                         $file = rtrim($mediaDirectory, '/\\').DIRECTORY_SEPARATOR.$match[1];
