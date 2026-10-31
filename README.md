@@ -6,8 +6,12 @@ recipe reads/adds/edits, household snapshots, restaurants and meal plans.
 Account-scoped WebSocket connections synchronize timers; unauthenticated,
 read-only connections serve public recipe links. The persistent MySQL database
 stays on InMotion. Signup, account provisioning, invitations, account
-administration and AI access remain in the separate
+administration remain in the separate
 [InMotion repository](https://github.com/agawlbb/coffey-table-recipes-server).
+
+AI imports, clarification turns, variations and image generation also use this
+endpoint; see [AI-WEBSOCKET.md](AI-WEBSOCKET.md) for the matching working branches,
+progress protocol and required runtime image update.
 
 `server.php` runs the service; `src/` contains its code. Firebase ID tokens
 authenticate app users. HA credentials are checked against the existing shared
@@ -27,7 +31,8 @@ python3 deploy.py
 This copies source and locked dependencies into `/opt/services/ctr-backend/code/`
 and restarts the one `ctr-backend` container. No cPanel credential is used.
 Before deploying this migration, install the existing VPS timer sender credential
-as `private/timer-push.json` (mode 600); no AI or signup credential is moved.
+as `private/timer-push.json` (mode 600). AI uses the uploaded
+`private/recipe-ai.local.json` (mode 600); signup credentials remain on InMotion.
 Credentials remain in `/opt/services/ctr-backend/private/`, and persistent state
 in `/opt/services/ctr-backend/state/`. Both are outside Git and are preserved.
 Routine source changes do not rebuild the runtime image or run schema/import jobs.

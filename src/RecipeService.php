@@ -118,7 +118,7 @@ final class RecipeService
                 WHERE c.parent_id <=> ? GROUP BY c.id,c.parent_id,c.slug,c.label,c.image_key,c.position
                 HAVING c.parent_id IS NULL OR recipe_count>0 ORDER BY c.position,c.label,c.id", [...$countParameters, $householdId, $scope === '' ? null : $scope]);
             foreach ($nodes as &$categoryNode) {
-                $categoryNode['image_url']=str_starts_with($categoryNode['image_key'],'ai-') ? rtrim($this->mediaUrl,'/').'/category-'.$categoryNode['id'].'.jpg' : null;
+                $categoryNode['image_url']=str_starts_with($categoryNode['image_key'],'ai-') ? CategoryImageService::imageUrl((string)$categoryNode['id'],$this->mediaUrl) : null;
                 $categoryNode['needs_ai_image']=str_starts_with($categoryNode['slug'],'import-') && $categoryNode['image_url']===null && !$publicRead && $this->households->aiImagesEnabled($userId, $householdId);
             } unset($categoryNode);
             return ['recipes' => [], 'category_nodes' => $nodes, 'view' => 'categories', 'next_offset' => null];

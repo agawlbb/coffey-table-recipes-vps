@@ -26,7 +26,7 @@ final class HouseholdSnapshot {
                 foreach ($this->rows("SELECT c.* FROM $table c JOIN recipes r ON r.id=c.recipe_id AND r.household_id=c.household_id JOIN recipe_households h ON h.recipe_id=r.id WHERE h.household_id=? AND h.removed_at IS NULL AND r.deleted_at IS NULL ORDER BY $order",[$household]) as $row) $children[$key][$row['recipe_id']][]=$row;
             }
             $categories=$this->rows('SELECT * FROM recipe_categories ORDER BY position,label,id');
-            foreach ($categories as &$category) $category['image_url']=str_starts_with($category['image_key'] ?? '', 'ai-') ? rtrim($this->mediaUrl,'/').'/category-'.$category['id'].'.jpg' : null;
+            foreach ($categories as &$category) $category['image_url']=str_starts_with($category['image_key'] ?? '', 'ai-') ? CategoryImageService::imageUrl((string)$category['id'],$this->mediaUrl) : null;
             unset($category);
             $categoryMap=array_column($categories,null,'id');
             $families=[];

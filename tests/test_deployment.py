@@ -18,11 +18,11 @@ class DeploymentTests(unittest.TestCase):
             home = Path(directory) / 'backend'
             code = home / 'code'
             for name in ('src/ShoppingSocket.php', 'vendor/autoload.php', 'bootstrap.php',
-                         'server.php', 'composer.lock', 'compose.yaml', 'backend.caddy'):
+                         'server.php', 'ai-worker.php', 'composer.lock', 'compose.yaml', 'backend.caddy'):
                 path = source / name
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_text('fixture')
-            for name in ('private/database.json', 'private/firebase.json', 'private/timer-push.json',
+            for name in ('private/database.json', 'private/firebase.json', 'private/timer-push.json', 'private/recipe-ai.local.json',
                          'state/pending.json', 'state/media/recipes/photo.jpg', 'code/obsolete.php'):
                 path = home / name
                 path.parent.mkdir(parents=True, exist_ok=True)
@@ -64,7 +64,7 @@ class DeploymentTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             (root / 'private').mkdir()
-            for name in ('database.json', 'firebase.json', 'timer-push.json'):
+            for name in ('database.json', 'firebase.json', 'timer-push.json', 'recipe-ai.local.json'):
                 (root / 'private' / name).write_text('fixture')
             with patch.object(deploy, 'ROOT', root), patch.object(deploy, 'HOME', root), \
                  patch.object(deploy, 'run') as run:

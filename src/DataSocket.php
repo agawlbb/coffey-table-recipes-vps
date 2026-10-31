@@ -15,13 +15,17 @@ final class DataSocket
             if ($scope === 'household' && $actor['ha']) throw new HttpError(403,'permission_denied','Shopping access only.');
         } elseif ($scope === 'public') {
             $actor = ['household'=>null,'user'=>'','ha'=>false];
-        } elseif ($scope === 'timers') {
+        } elseif ($scope === 'timers' || $scope === 'ai') {
             $identity = ($this->verify)($token);
             $q=$this->pdo->prepare('SELECT id,disabled FROM users WHERE firebase_uid=?'); $q->execute([$identity['uid']]);
             $user=$q->fetch(PDO::FETCH_ASSOC);
             if (!$user || $user['disabled']) throw new HttpError(403,'account_disabled','Account unavailable.');
             $actor=['household'=>null,'user'=>(string)$user['id'],'uid'=>$identity['uid'],'ha'=>false];
         } else throw new HttpError(422,'invalid_scope','Unknown connection scope.');
+        if ($scope==='ai' && $household!==null) {
+            (new HouseholdService($this->pdo))->membership($actor['user'],$household);
+            $actor['household']=$household;
+        }
         return $actor + ['scope'=>$scope];
     }
 
