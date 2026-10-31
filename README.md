@@ -148,3 +148,31 @@ passed for the new/changed services, bootstrap and AI fixture worker;
 are included. No hosted data, live provider, deployment or service restart was
 used. Main advanced independently during this task; the feature remains based on
 the recorded starting commit pending authorized integration.
+
+
+### Authorized feature deployment — 2026-10-31
+
+The user explicitly requested deploying the backend from this feature branch and
+building a test Android APK; merging into main remains unauthorized. Accepted main
+`40d783c` was integrated into the feature branch to preserve the current VPS
+routing, HTTP/media cutover and database-connection repair. The deployed source is
+`8dc297aabcaedf7fa1bd01b7eecc303e50c74774`.
+
+Post-integration checks passed: 81 chat fixtures, 92 variation checks, 294 import
+checks, AI/account worker recovery/cancellation/detached-completion checks, 10 AI
+socket integration tests, 4 deployer-preservation tests, 34 HTTP checks and media
+migration/preservation fixtures. Providers and SQL were fake/disposable for tests.
+
+The existing `deploy.py` copied source and restarted `ctr-backend` without building
+a runtime image or running schema/data migrations. Installed source hashes match
+the deployed commit; private configuration hashes were unchanged and the state
+directory was preserved. CpuShares=1024 and unlimited cpu.max were verified.
+Public HTTPS health and both association documents returned 200 JSON; private
+configuration URLs returned 404. Public WebSocket authentication/heartbeat passed,
+and AI authentication rejected an invalid token with 401. The live PHP runtime
+loads and matches `RecipeChatService` on the intended AI route. No live provider
+call or recipe save was used for deployment validation.
+
+The app feature integrates accepted main and reserves signed Android test build
+46, using source `9754546d62ea6d29a8833832f9ba8a571ed3cb30`. No web/iOS build,
+release tag or main-branch change is part of this deployment.
