@@ -118,3 +118,41 @@ Authenticated app household snapshots, meal-plan writes and device timer deliver
 remain for the owner’s matching-app testing. Blank-recipe automatic categorization
 calls the new AI endpoint in the matching InMotion branch, which remains pending
 that branch’s deployment. Existing signup and AI endpoints were left untouched.
+# AI WebSocket working branch — 2026-10-30
+
+`feature/vps-ai-websocket`, based on fetched `origin/main` `b977c8f`.
+Source is prepared for review; do not merge until the user explicitly approves.
+
+- PHP syntax passed for bootstrap/server/AI worker and every service, plus the
+  new PHP worker/configuration fixtures. Changed Python files passed `py_compile`.
+- Migrated AI fixtures passed: `tests/recipe_ai.php` (256), `recipe_photo.php`
+  (30), `recipe_variation.php` (92, including the new persistent VPS cover check),
+  `blank_recipe_categories.php` (18), `source_photos.php` (10),
+  `website_import.php` (19), `website_photos.php` (8), `recipe_methods.php` (25),
+  `recipe_descriptions.php` (18), and `recipe_wording.php` (25).
+- `php tests/ai_jobs.php`: child crash recovery, repeated connection-key use,
+  duplicate-run rejection and cancellation passed.
+- `php tests/ai_configuration.php`: model pinning, private policy/extractor
+  preservation and missing-credential rejection passed.
+- `php tests/data_socket.php`: existing recipe/edit/replay, meal-date/conflict,
+  timer-isolation/replay and access-revocation checks passed.
+- `python3 -m unittest discover -s tests -p test_deployment.py`: all three
+  mocked deployment/CPU-preservation checks passed. These did not deploy or restart
+  anything. The AI credential and worker are required/preserved by deployment.
+- Using the existing development Python environment with aiohttp,
+  `python -m unittest discover -s tests -p ai_websocket.py`: all five real-socket
+  tests passed. They cover progress with responsive heartbeats and other readers,
+  clarification on one connection without saving, authorization/revocation,
+  image generation/category media, blank categorization and error recovery.
+- `python -m unittest discover -s tests -p data_websocket.py`: all three passed.
+  `python -m unittest discover -s tests -p shopping_websocket.py`: two passed;
+  the fixture-inapplicable sync-request test remained skipped.
+- App full suite: 544 passed; its final progress-placement/long-connection
+  follow-up passed 40 focused tests. Analysis passed; no app packages were built.
+
+All AI provider responses were mocked and all SQL was disposable SQLite. No
+production data, real API credential or paid provider request was used in tests.
+The existing uploaded recipe credential is only referenced by its private runtime
+path. The updated runtime image has not been built and the branch is not deployed.
+No source was merged into main. Physical-device suspension, real-provider execution
+and the rebuilt production runtime are not claimed verified.
