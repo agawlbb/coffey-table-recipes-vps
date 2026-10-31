@@ -223,3 +223,22 @@ completion, completion after the saving client disconnects, a pushed owned image
 existing-cover reuse, disabled generation and preservation after provider failure.
 Changed Python compiled and `git diff --check` passed. Existing Flutter validation
 was retained; there is no app change or app build for this repair.
+
+The user's reported category was repaired through the existing production image
+service using the already-approved recipe AI key and its household's image
+permission. This generated one new 816×816 JPEG for Mexican main dishes and set
+only category 41's artwork to `ai-41`. No recipe, category label, parent artwork or
+other category was edited. Visual inspection shows tacos, enchiladas, tamales and
+mole rather than the inherited stock image. Public HTTPS serves the JPEG at
+`https://ctr.coffeybean.com/media/recipes/category-41.jpg`; its SHA-256 matches
+the persistent file, `a9257b536696dac17c31554e50324aa3f9817f4834270850a56f7cd109dc03c7`.
+
+Deployed source `0dfda05` from the existing feature branch with `python3 deploy.py`.
+The runtime image stayed `sha256:48d43a22111a500ed5853688f3db2406a97634c4d978db834ff24b3d36797e36`;
+no image/app build or rollback copy was made. Installed runtime PHP hashes match
+the tested source. The container is running with zero restarts; CpuShares=1024
+and `cpu.max=max 100000` remain verified. The affected household's real durable
+snapshot now contains the owned VPS image URL. Public WSS authentication and
+ping/pong passed after restart. Branches remain unmerged; shared-hosting and app
+source/deployments are unchanged. The automatic new-save sequence was exercised
+with disposable fixtures; no synthetic production recipe was created for testing.

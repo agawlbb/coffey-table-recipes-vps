@@ -40,7 +40,7 @@ also serves `category-{id}.jpg`. Old media stays on InMotion. Variation cover
 review reads only authorized stored keys, from VPS storage or the fixed original
 media host. No database migration is needed.
 
-The VPS runtime from source commit `3bbd772` is deployed from this branch on the
+The VPS runtime from source commit `0dfda05` is deployed from this branch on the
 user's explicit instruction. The branch remains unmerged. Shared hosting and app
 deployments are unchanged. Deployment evidence is recorded in VALIDATION.md.
 
