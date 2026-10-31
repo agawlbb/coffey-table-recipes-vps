@@ -176,3 +176,80 @@ call or recipe save was used for deployment validation.
 The app feature integrates accepted main and reserves signed Android test build
 46, using source `9754546d62ea6d29a8833832f9ba8a571ed3cb30`. No web/iOS build,
 release tag or main-branch change is part of this deployment.
+
+
+## Per-user cooking context (feature branch)
+
+`feature/ai-user-context` starts from fetched VPS main
+`7d66c4dc49e650150df83843e4d91180578f5821`. Purpose: remember cooking preferences
+learned in recipe chats and send them to future conversations for the same user.
+This feature is unmerged and undeployed. The released Flutter app remains
+unchanged; no new screen, control, endpoint, database schema or dependency is needed.
+All implementation is on the VPS, with the existing approved private AI config.
+
+Each message request loads the authenticated account's durable cooking context
+and includes `cooking_context` in the provider input. Facts have an opaque ID,
+`person` (`self` or the stated family name/relationship), and concise `preference`.
+The provider receives no internal account or household identifier. Personal facts
+follow the user between households. Family facts are private to that reporting
+user and included only in the household where they were learned; they are not
+copied into another family member's account or shared with other users.
+
+AI returns a required `context_updates` array alongside its usual message,
+readiness and agreed recipe specification. It may add, update or remove facts.
+Every delta must quote supporting evidence verbatim from the latest user message.
+Updates/removals must reference a currently visible existing fact ID; additions
+receive a new server-owned ID. The full delta is validated before any state changes.
+Duplicates are ignored; a correction replaces its existing fact. Hypotheticals,
+one-dish exceptions, recipe contents, assistant suggestions and inferred medical
+conditions are not enduring preference evidence. Current explicit requests take
+priority over saved preferences. Users can correct or ask to forget preferences
+in ordinary chat; no preference-management UI is added.
+
+Valid learning commits on a successful chat turn, independently of recipe
+review/Save, so discarding an unsaved dish does not erase learned preferences.
+Recipe preparation still uses only the agreed cooking specification and does not
+inject profile facts into recipe source, notes or attribution. Missing/invalid
+AI deltas fail without changing context or advancing the chat. The request body
+cannot supply an authoritative user identity or context snapshot.
+
+Chat responses add `context_revision` and normalized `context_updates` (action,
+fact ID, person and preference; supporting quotes are not returned as profile data).
+Existing released clients ignore these extra fields and continue working. A cached
+retry returns the original turn's response/revision but never reapplies its old
+context updates or reverses a newer correction. Historical assistant messages do
+not replay preference deltas into later model requests. Forgetting removes facts
+from durable context; existing working conversation transcripts are not erased.
+
+Persistent facts live in private `state/recipe-user-context/` files, outside the
+replaceable code and disposable chat caches. Each account has one hashed filename
+and lock, mode 0600 in a mode-0700 directory. At most 100 compact facts are kept,
+with at most 100 updates per turn, an 80-character person label, 500-character
+preference and 1,000-character supporting quote. Reaching the bound does not
+silently discard other facts; existing chat can forget facts to make room.
+
+One request per account holds the context lock while generating/committing, so two
+simultaneous chats cannot overwrite corrections. Another account can keep working.
+A busy account uses the existing recoverable `chat_in_progress` response. Atomic
+file replacement and one bounded pending-chat snapshot recover an interruption
+between saving preferences and the successful chat response cache. The snapshot
+is removed after both files commit, or repaired before another conversation reads
+context. Disk/write interruption uses the existing `ai_interrupted` code so the
+released client retries the same turn. Malformed stored context is preserved for
+repair rather than reset. Live account/membership authorization is rechecked
+before durable chat/context changes as well as before the worker returns output.
+Routine source deployment already preserves the state directory; no setup or
+migration is introduced by this feature.
+
+Validation (2026-10-31): PHP syntax checks passed; `php tests/recipe_user_context.php`
+passed 71 checks; `php tests/recipe_chat.php` passed 81; `php tests/ai_jobs.php`
+passed AI/account crash, duplicate, cancellation and detached-completion checks;
+`php tests/authentication.php` passed 21 signed-identity checks. The 12 tests in
+`python -m unittest discover -s tests -p ai_websocket.py` passed using real sockets,
+fake provider replies and disposable SQLite. Coverage includes fresh-worker/new-
+conversation recall, account and family/household isolation, corrections, forgetting,
+stale retries, invalid/ungrounded deltas, client-context spoofing, cache deletion,
+concurrent accounts, interrupted two-file commit recovery and mid-run revocation.
+No live provider call, production state change, Flutter build, deployment, release
+or main merge is included. No Flutter source/dependency changed, so Flutter checks
+were not run for this backend-only feature.

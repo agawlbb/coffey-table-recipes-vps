@@ -18,10 +18,24 @@ $transport=static function(array $payload): array {
     // Deliberately slower than the wire test's ping deadline: proves provider work cannot block sockets.
     usleep(1200000);
     if (is_string($payload['input']??null) && str_contains($payload['input'],'"category":"Failure"')) return ['status'=>503,'body'=>'{}'];
-    if (($payload['text']['format']['name']??'')==='recipe_chat') return ['status'=>200,'body'=>json_encode(['status'=>'completed','output'=>[['content'=>[['type'=>'output_text','text'=>json_encode([
-        'message'=>'We can refine this soup or review it when ready.','ready'=>true,
-        'recipe_text'=>'Agreed soup. 2 cups water, 1 teaspoon salt. Bring to a boil and simmer for 2 minutes. Serves 2.',
-    ])]]]]])];
+    if (($payload['text']['format']['name']??'')==='recipe_chat') {
+        $context=json_decode($payload['input'][0]['content'],true)['cooking_context'];
+        $latest=$payload['input'][count($payload['input'])-1]['content'];
+        $updates=[];
+        if ($latest==='I dislike mushrooms.') $updates[]=['action'=>'add','id'=>null,'person'=>'self','preference'=>'Dislikes mushrooms.','evidence'=>$latest];
+        if ($latest==='My son Alex dislikes cilantro.') $updates[]=['action'=>'add','id'=>null,'person'=>'my son Alex','preference'=>'Dislikes cilantro.','evidence'=>$latest];
+        if (in_array($latest,['I like mushrooms now.','Forget my mushroom preference.'],true)) {
+            foreach ($context as $fact) if ($fact['person']==='self' && str_contains($fact['preference'],'mushrooms')) {
+                $remove=str_starts_with($latest,'Forget');
+                $updates[]=['action'=>$remove?'remove':'update','id'=>$fact['id'],'person'=>null,'preference'=>$remove?null:'Likes mushrooms.','evidence'=>$latest];
+            }
+        }
+        return ['status'=>200,'body'=>json_encode(['status'=>'completed','output'=>[['content'=>[['type'=>'output_text','text'=>json_encode([
+            'message'=>'Remembered: '.implode(' | ',array_map(static fn($fact)=>$fact['person'].': '.$fact['preference'],$context)),
+            'ready'=>true,'context_updates'=>$updates,
+            'recipe_text'=>'Agreed soup. 2 cups water, 1 teaspoon salt. Bring to a boil and simmer for 2 minutes. Serves 2.',
+        ])]]]]])];
+    }
     if (str_contains(json_encode($payload),'Agreed soup')) return ['status'=>200,'body'=>json_encode(['status'=>'completed','output'=>[['content'=>[['type'=>'output_text','text'=>json_encode([
         'recipe'=>['title'=>'Agreed soup','ingredients'=>[['original_text'=>'2 cups water','ingredient_name'=>'water']],'steps'=>[['instruction'=>'Simmer for 2 minutes.']]],'questions'=>[], 'variation_label'=>'refined','change_description'=>'Refined the soup as agreed.',
     ])]]]]])];

@@ -20,7 +20,7 @@ $transport=static function(array $payload) use (&$payloads,&$failure,&$malformed
     if (($payload['text']['format']['name']??'')==='recipe_chat') {
         $latest=$payload['input'][count($payload['input'])-1]['content'];
         $result=['message'=>str_contains($latest,'What if')?'Removing eggs would weaken the structure. I have kept them in the recipe.':'Here is a practical soup. You can keep refining it or review when ready.',
-            'ready'=>true,'recipe_text'=>'Egg soup. 2 eggs and 2 cups water. Boil water, add beaten eggs, and simmer for 2 minutes. Serves 2.'];
+            'context_updates'=>[],'ready'=>true,'recipe_text'=>'Egg soup. 2 eggs and 2 cups water. Boil water, add beaten eggs, and simmer for 2 minutes. Serves 2.'];
     } else $result=['recipe'=>['title'=>'Egg soup','original_language'=>'en','ingredients'=>[['original_text'=>'2 eggs','ingredient_name'=>'eggs']],'steps'=>[['instruction'=>'Simmer for 2 minutes.','actions'=>[['action_type'=>'timer','duration_seconds'=>120]]]]],
         'variation_label'=>'refined','change_description'=>'Refined the soup as agreed.',
         'parent_cover_appropriate'=>true,'parent_cover_reason'=>'The pictured soup still matches.',
