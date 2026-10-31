@@ -7,7 +7,9 @@ has been removed; see [CHILD-MODE-SQL.md](CHILD-MODE-SQL.md).
 The `feature/vps-account-auth` branches in the app, InMotion and VPS repositories
 move account bootstrap, first household creation, verification mail and invitations
 to `wss://ctr.coffeybean.com/shopping`. Bases: app `6a4227a`, InMotion `42ab625`,
-VPS `287dc4d`. The test deployment is recorded below; the branches remain unmerged.
+VPS `287dc4d`. The test deployment is recorded below. The user accepted integration
+into `main` on 2026-10-31, with no new release, build or deployment. Completed
+account working branches are removed after the verified merges.
 
 Firebase still handles password/Google authentication, refresh tokens and password
 resets. The app sends Firebase ID tokens, never passwords, to the VPS. No screen or
