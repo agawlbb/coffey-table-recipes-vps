@@ -2,7 +2,9 @@
 
 Branch `feature/vps-ai-websocket` starts at fetched `origin/main` `b977c8f`.
 Matching app and InMotion branches start at `2920c38` and `c5503a3`.
-Do not merge these branches until the user approves.
+The user approved integration and branch removal on October 31, 2026. Completed
+source is integrated into main and the VPS is deployed from main. No app build,
+shared-hosting deployment or additional rollback copy is requested.
 
 The existing `/shopping` WebSocket accepts `scope: ai` with a Firebase token and
 an optional household ID. Household requests require that household; parent
