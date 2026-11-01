@@ -44,3 +44,11 @@ Validation:
 
 No APK build or app release is part of this task. Installed build 50 understands
 this backend response shape; the Draft recipe label requires a subsequent app build.
+
+Deployment: source 42249af copied to the VPS with the existing deploy.py;
+backend restarted successfully. Public /health returned 200 and AI WebSocket
+rejected invalid authentication with 401. Deployed service files match source;
+private database/AI/Firebase configurations were unchanged. CPU shares 1024,
+unlimited cpu.max. No InMotion deployment, database data changes, main merge,
+app build or release. Production source matched the previous deployed task
+baseline before copying, so unrelated feature work was not overwritten.
