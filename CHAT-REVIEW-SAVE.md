@@ -60,3 +60,16 @@ the new settings, not a reproduction of the user's lost envelope or a guaranteed
 latency. No production recipe, database mutation or context change was used.
 PHP syntax/diff checks passed. The companion app has 37 focused widget tests.
 No app package, web deployment, release tag or main merge is included.
+
+
+## Verified backend deployment — 2026-11-01
+
+VPS source `8df3346` was deployed from this feature branch with the existing
+source-copy/restart command. Private configuration hashes were unchanged and
+installed runtime hashes match the source. The container is running with zero
+restarts; CpuShares=1024 and unlimited cpu.max were verified. Public HTTPS health
+returned 200/ok and invalid AI credentials were rejected with 401 over WSS.
+No database schema/data changes, InMotion deployment or main merge occurred.
+The current installed test app benefits from the preparation/error repair, but
+the new review button, moving indicator and deferred save choice require the
+companion app package. No additional app build was requested or started.
