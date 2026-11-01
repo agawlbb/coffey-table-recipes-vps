@@ -389,3 +389,18 @@ for undo, no implicit import/save, and existing clients. These tests verify serv
 behavior and the provider instruction contract; no live AI behavior evaluation
 was performed. No production changes, app builds, database changes, deployment
 or main merge is included.
+
+
+### Authorized evolving-chat test deployment — 2026-11-01
+
+The user requested backend deployment from this branch and an Android test APK,
+with main integration still prohibited. Deployed VPS source:
+`f31481216d1a75a833ca127a37567f4b1cdade79`. The existing deployer copied code and
+restarted the service without building an image or running schema/data changes.
+Installed worker, chat/context services, bootstrap and server match that source.
+Private configuration hashes are unchanged. The container is running with zero
+restarts; CpuShares=1024 and unlimited effective cpu.max were verified. Public
+HTTPS health returned 200/ok and AI WebSocket auth rejected an invalid token with
+401. No live provider call or production recipe save was performed. The existing
+focused validation remains applicable because deployed application source did
+not change. No main merge or InMotion backend deployment occurred.
