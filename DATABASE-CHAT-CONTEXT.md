@@ -27,9 +27,11 @@ remain in place. A database error never falls back to stale preference files.
 This is explicit maintenance, never an automatic deployment/request migration.
 
 1. Stop the existing backend and its AI workers so no old file writer can run.
-2. Using the existing runtime image, private database connection and this source,
+2. Apply `bin/user-recipe-context.sql` once using an authorized database
+   administrator. Do not grant schema privileges to the runtime account.
+   Using the existing runtime image, private database connection and this source,
    run `php bin/migrate-recipe-context.php /state/recipe-user-context`.
-   The command applies `bin/user-recipe-context.sql` and validates every original
+   The importer uses only the normal runtime connection and validates every original
    JSON profile against a real user by matching its hashed account filename.
    Unknown accounts, corrupt profiles, symlinks, or conflicting SQL records fail
    without overwriting data. All profiles import in one transaction and each is
@@ -59,3 +61,19 @@ passed 106. `python -m unittest discover -s tests -p ai_websocket.py` passed
 13 real-socket tests with fresh workers, fake provider replies and disposable SQL.
 PHP syntax and diff checks passed. No Flutter source/dependencies changed; no
 Flutter tests, app build or main merge was performed.
+
+
+## Live cutover status — 2026-11-01
+
+The live database uses `users.id BIGINT UNSIGNED`, matching the prepared foreign
+key. One file profile was found, with no unmatched account. The first maintenance
+attempt stopped at schema creation: the restricted runtime connection returned
+SQLSTATE 42000 / driver 1142 (CREATE denied). Import never ran. The old backend
+was restarted successfully; original context files and deployed code are unchanged.
+No database privileges were expanded. Schema application is now explicitly
+separate from the normal-privilege importer.
+
+Automatic approval review rejected inspecting deployment tooling for administrator
+credential configuration as credential probing beyond the migration. Administrator
+access was not attempted. The prepared table definition requires explicit approval
+for administrator access before the live migration/deployment can continue.

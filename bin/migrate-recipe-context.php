@@ -6,7 +6,6 @@ require dirname(__DIR__).'/src/RecipeContextMigration.php';
 try {
     if ($argc!==2) throw new RuntimeException('Supply the existing preference-file directory.');
     $pdo=runtimeDatabase();
-    $pdo->exec(file_get_contents(__DIR__.'/user-recipe-context.sql'));
     echo json_encode(RecipeContextMigration::import($pdo,$argv[1]),JSON_THROW_ON_ERROR)."\n";
 } catch (Throwable $error) {
     // Provider output, preference contents and credentials never belong in logs.
