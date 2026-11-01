@@ -349,3 +349,43 @@ cpu.max were verified. No app package or runtime image was built.
 
 Protected SQL export SHA-256:
 `4eb05d270b644875e2076648bb2eeb471e49da64d730b1411b859db69b495893`.
+
+
+## Evolving draft chat (2026-11-01, pending integration)
+
+Branch `feature/evolving-recipe-chat` starts from fetched main
+`b8c0b24f9c04981f1604f52ddc13244b9a3007e2`. Companion Flutter branch starts
+from `9c840e26b3b61bbdcb7f0938986e6bcb3d006f6c`. Do not merge until instructed.
+
+The working recipe is now an unsaved proposal which AI is instructed to adjust
+while discussing changes. “What would happen if…” explains the effect AND applies
+it; “tell me what adjustments to make” applies those adjustments in the same reply
+without another confirmation. Explicit “just explain/don't change” requests and
+unresolved alternatives leave it alone. Essential missing details may still need
+a question. This replaces the previous hypothetical-means-no-change rule.
+
+Each response includes server-held `recipe_text`, also on prepare/clarification,
+so a client can display the working recipe separately. Clients sending boolean
+`draft_view: true` receive concise chat without appended recipe text. Already
+released clients keep the existing inline display, so this backend can be
+deployed before the new client. The display choice is included in new-client
+turn fingerprints; retries preserve their exact cached response. Client-supplied
+recipe text remains untrusted and is never used as the working recipe.
+
+The provider gets current and previous recipe snapshots alongside original
+cooking data. On “undo that” it is instructed to restore the previous text.
+Only actual recipe changes replace the previous snapshot; explanation-only
+turns cannot erase the working draft even if AI omits its text. These changes
+never perform recipe saves or modify enduring preference facts on their own.
+Existing context locks, authorization checks, replay recovery, state privacy,
+source revision checks and Review/Save handling remain in place.
+
+Validation: PHP lint; 106 chat checks; 71 user-context checks; 13 real-socket AI
+tests using fake providers/disposable SQLite (12 existing checks passed in the
+batch, and the new separate-draft test passed after fixing its test auth setup).
+Coverage includes separate draft visibility, replay, display-mode turn conflicts,
+exploratory revisions, explanation-only preservation, current/previous snapshots
+for undo, no implicit import/save, and existing clients. These tests verify service
+behavior and the provider instruction contract; no live AI behavior evaluation
+was performed. No production changes, app builds, database changes, deployment
+or main merge is included.
