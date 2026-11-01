@@ -5,7 +5,7 @@ declare(strict_types=1);
 final class ShoppingSocket
 {
     public function __construct(private PDO $pdo, private Closure $verify,
-        private HomeAssistantConnections $connections, private ShoppingSyncRequests $requests) {}
+        private HomeAssistantConnections $connections, private ShoppingSyncRequests $requests, private ?ShoppingPhotoService $photos = null) {}
 
     public function authenticate(string $token, ?string $household): array
     {
@@ -42,6 +42,22 @@ final class ShoppingSocket
     {
         $household=$actor['household'];
         $root = '/households/'.$household.'/shopping-list';
+        if ($path === $root.'/photos' || preg_match('#^'.preg_quote($root, '#').'/photos/([a-f0-9]{64})$#D', $path, $photoMatch)) {
+            if ($actor['ha']) throw new HttpError(403, 'permission_denied', 'Sign in to manage shopping photos.');
+            $photos = $this->photos ?? new ShoppingPhotoService(CTR_STORAGE.'/shopping-photos');
+            if ($path === $root.'/photos' && $body !== null) return $photos->upload($household, $body);
+            if (isset($photoMatch[1]) && $body === null) return $photos->read($household, $photoMatch[1]);
+            throw new HttpError(422, 'invalid_photo', 'Invalid photo operation.');
+        }
+        if ($body !== null) {
+            $photos = $this->photos ?? new ShoppingPhotoService(CTR_STORAGE.'/shopping-photos');
+            foreach ($body['items'] ?? [] as $item) {
+                if (is_array($item) && is_string($item['photo'] ?? null) && $item['photo'] !== ''
+                    && !$photos->exists($household, $item['photo'])) {
+                    throw new HttpError(422, 'invalid_photo', 'Upload the photo to this household first.');
+                }
+            }
+        }
         if (!in_array($path, [$root, $root.'/sync-request'], true)) throw new HttpError(404, 'not_found', 'Shopping endpoint not found.');
         if ($path === $root.'/sync-request') {
             if ($body === null || $actor['ha']) throw new HttpError(403, 'permission_denied', 'Unsupported operation.');

@@ -24,8 +24,12 @@ final class ShoppingListService
             if (array_key_exists('note', $item) && (!is_string($item['note']) || mb_strlen($item['note']) > 500)) {
                 throw new HttpError(422, 'invalid_note', 'Use a note of up to 500 characters.');
             }
+            if (array_key_exists('photo', $item) && (!is_string($item['photo'])
+                || ($item['photo'] !== '' && !preg_match('/^[a-f0-9]{64}$/D', $item['photo'])))) {
+                throw new HttpError(422, 'invalid_photo', 'Invalid shopping photo.');
+            }
             $ids[$item['id']] = true;
-            $items[] = ['id'=>$item['id'], 'name'=>trim($item['name']), 'checked'=>$item['checked'], 'department'=>$item['department']] + (array_key_exists('note', $item) ? ['note'=>trim($item['note'])] : []);
+            $items[] = ['id'=>$item['id'], 'name'=>trim($item['name']), 'checked'=>$item['checked'], 'department'=>$item['department']] + (array_key_exists('note', $item) ? ['note'=>trim($item['note'])] : []) + (array_key_exists('photo', $item) ? ['photo'=>$item['photo']] : []);
         }
         return $items;
     }
@@ -144,8 +148,10 @@ final class ShoppingListService
                     && empty($body['department_renames'])) {
                     $retry=self::validate($body,$old['departments']);
                     foreach ($retry as $i=>&$item) {
-                        if (!array_key_exists('note',$item) && isset($old['items'][$i]['note'])
-                            && $old['items'][$i]['id']===$item['id']) $item['note']=$old['items'][$i]['note'];
+                        foreach (['note', 'photo'] as $field) {
+                            if (!array_key_exists($field,$item) && isset($old['items'][$i][$field])
+                                && $old['items'][$i]['id']===$item['id']) $item[$field]=$old['items'][$i][$field];
+                        }
                     } unset($item);
                     if ($retry==$old['items']) {
                         $this->pdo->commit();
@@ -214,9 +220,11 @@ final class ShoppingListService
                 }
             }
             foreach ($items as &$item) {
-                // Missing means an older client: only an explicit empty note clears it.
-                if (!array_key_exists('note', $item) && isset($oldItems[$item['id']]['note'])) {
-                    $item['note'] = $oldItems[$item['id']]['note'];
+                // Older clients omit metadata; an explicit empty string clears it.
+                foreach (['note', 'photo'] as $field) {
+                    if (!array_key_exists($field, $item) && isset($oldItems[$item['id']][$field])) {
+                        $item[$field] = $oldItems[$item['id']][$field];
+                    }
                 }
                 if (!isset($oldItems[$item['id']]) && $item['department'] === '') {
                     $matches = self::matchingKeys($associations, self::itemKey($item['name']));

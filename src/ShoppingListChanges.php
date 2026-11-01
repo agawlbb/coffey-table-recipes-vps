@@ -36,9 +36,9 @@ final class ShoppingListChanges
             $id=(string)$id;
             if (!self::newer($stamp, $deleted[$id] ?? null)) continue;
             $original = $before[$id] ?? null;
-            foreach (['name', 'note', 'department', 'checked'] as $field) {
+            foreach (['name', 'note', 'photo', 'department', 'checked'] as $field) {
                 // An omitted note in an older client is not an explicit clear.
-                if ($field === 'note' && !array_key_exists($field, $item)) continue;
+                if (in_array($field, ['note', 'photo'], true) && !array_key_exists($field, $item)) continue;
                 if ($original !== null && ($item[$field] ?? '') === ($original[$field] ?? '')) continue;
                 if (!self::newer($stamp, $fields[$id][$field] ?? null)) continue;
                 if (!isset($items[$id])) $items[$id] = $item;

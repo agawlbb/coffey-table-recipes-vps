@@ -24,7 +24,7 @@ $socket=new ShoppingSocket($db, static function(string $token) use (&$verificati
     $verifications++;
     if (!in_array($token,['alice','bob','disabled'],true)) throw new HttpError(401,'invalid_token','Invalid.');
     return ['uid'=>$token];
-},$connections,new ShoppingSyncRequests($dir));
+},$connections,new ShoppingSyncRequests($dir), new ShoppingPhotoService($dir.'/photos'));
 function checkSocket(bool $ok): void { if (!$ok) throw new RuntimeException('Socket assertion failed.'); }
 function rejectSocket(callable $call,int $status): void {
     try { $call(); throw new RuntimeException('Expected rejection.'); }
@@ -67,10 +67,36 @@ try {
     $stale=array_replace($config,['departments'=>['Supermarket'],'client_change_id'=>'department2']);
     rejectSocket(fn()=>$socket->handle('alice','1',$path,$stale),409);
     checkSocket($socket->handle('alice','1',$path,$config)['departments']===['Farm stand']);
+    $image = imagecreatetruecolor(4, 3);
+    ob_start(); imagepng($image); $png = ob_get_clean(); imagedestroy($image);
+    $upload = $socket->handle('alice', '1', $path.'/photos', ['image_base64'=>base64_encode($png)]);
+    $photo = $upload['photo'];
+    checkSocket((bool)preg_match('/^[a-f0-9]{64}$/D', $photo));
+    checkSocket($socket->handle('alice', '1', $path.'/photos', ['image_base64'=>base64_encode($png)]) === $upload);
+    $view = $socket->handle('alice', '1', $path.'/photos/'.$photo, null);
+    checkSocket(getimagesizefromstring(base64_decode($view['image_base64']))['mime'] === 'image/jpeg');
+    $withPhoto = array_replace($item, ['photo'=>$photo]);
+    $current = $socket->handle('alice', '1', $path, null);
+    $savedPhoto = $socket->handle('alice', '1', $path, ['revision'=>$current['revision'], 'items'=>[$withPhoto]]);
+    checkSocket($savedPhoto['items'][0]['photo'] === $photo);
+    // Household membership is rechecked even after successfully viewing a photo.
+    rejectSocket(fn()=>$socket->handle('bob', '1', $path.'/photos/'.$photo, null),404);
+    rejectSocket(fn()=>$socket->handle('bob', '2', '/households/2/shopping-list/photos/'.$photo, null),404);
+    rejectSocket(fn()=>$socket->handle('alice', '1', $path.'/photos', ['image_base64'=>'bad']),422);
+    rejectSocket(fn()=>$socket->handle('alice', '1', $path.'/photos', ['image_base64'=>str_repeat('x',7000001)]),422);
+    rejectSocket(fn()=>$socket->handle('alice', '1', $path, ['revision'=>$savedPhoto['revision'], 'items'=>[array_replace($item,['photo'=>str_repeat('f',64)])]]),422);
+    $ha = $connections->create('1')['token'];
+    rejectSocket(fn()=>$socket->handle($ha, '1', $path.'/photos/'.$photo, null),403);
+    rejectSocket(fn()=>$socket->handle($ha, '1', $path.'/photos', ['image_base64'=>base64_encode($png)]),403);
+    echo "Private shopping photo upload, read, validation and household isolation passed\n";
     $db->exec('DELETE FROM household_memberships WHERE user_id=1');
     rejectSocket(fn()=>$socket->handle('alice','1',$path,null),404);
+    rejectSocket(fn()=>$socket->handle('alice','1',$path.'/photos/'.$photo,null),404);
     echo "Socket identity, isolation, receipts and shared HA revocation passed\n";
 } finally {
+    foreach (glob($dir.'/photos/1/*') ?: [] as $file) unlink($file);
+    if (is_dir($dir.'/photos/1')) rmdir($dir.'/photos/1');
+    if (is_dir($dir.'/photos')) rmdir($dir.'/photos');
     foreach(glob($dir.'/*') ?: [] as $file) unlink($file);
     if(is_dir($dir)) rmdir($dir);
 }

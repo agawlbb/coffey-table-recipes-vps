@@ -221,3 +221,25 @@ $retried=$service->save('1','4',$oldDelete);
 checkShopping($retried===$confirmed);
 rejectShopping(fn()=>$service->save('1','4',['revision'=>$oldClient['revision'],'items'=>[memoryItem('old','Old client item')]]),409);
 echo "Legacy single-device lost-delete-response retry is acknowledged without overwriting any newer data\n";
+
+// Photos share note semantics, including old clients and independent concurrent edits.
+$photoItem = array_replace($milk, ['photo'=>str_repeat('a',64)]);
+$current = $service->read('1','1');
+$saved = $service->save('1','1',['revision'=>$current['revision'],'items'=>[$photoItem]]);
+checkShopping($service->read('2','1')['items'][0]['photo'] === $photoItem['photo']);
+$legacy = $photoItem; unset($legacy['photo']);
+$saved = $service->save('1','1',['revision'=>$saved['revision'],'items'=>[$legacy]]);
+checkShopping($saved['items'][0]['photo'] === $photoItem['photo']);
+$saved = $service->save('1','1',['revision'=>$saved['revision'],'items'=>[array_replace($photoItem,['photo'=>''])]]);
+checkShopping($saved['items'][0]['photo'] === '');
+foreach ([null, true, '../outside', 'https://example.com/photo.jpg'] as $badPhoto) {
+    rejectShopping(fn()=>$service->save('1','1',['revision'=>$saved['revision'],'items'=>[array_replace($photoItem,['photo'=>$badPhoto])]]),422);
+}
+[$merged] = ShoppingListChanges::merge([$photoItem], [$legacy], [array_replace($legacy,['checked'=>true])], [], [100,'check']);
+checkShopping($merged[0]['photo'] === $photoItem['photo'] && $merged[0]['checked']);
+[$merged] = ShoppingListChanges::merge([array_replace($photoItem,['checked'=>true])], [$photoItem], [array_replace($photoItem,['photo'=>str_repeat('b',64)])], [], [101,'replace']);
+checkShopping($merged[0]['photo'] === str_repeat('b',64) && $merged[0]['checked']);
+$saved = $service->save('1','1',['revision'=>$saved['revision'],'items'=>[]]);
+$saved = $service->save('1','1',['revision'=>$saved['revision'],'items'=>[array_replace($legacy,['id'=>'new-photo-item'])]]);
+checkShopping(!isset($saved['items'][0]['photo']));
+echo "Shopping photo metadata, legacy omission, clearing and concurrent field preservation passed\n";

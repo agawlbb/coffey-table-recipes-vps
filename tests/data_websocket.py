@@ -10,6 +10,20 @@ class DataWireTests(unittest.IsolatedAsyncioTestCase):
     connect = shopping.ShoppingWireTests.connect
     message = shopping.ShoppingWireTests.message
 
+    async def test_household_photo_routes_remain_private(self):
+        import subprocess
+        await self.auth(self.app)
+        root = '/households/1/shopping-list/photos'
+        image = subprocess.check_output(['php', '-r', '$i=imagecreatetruecolor(2,3);ob_start();imagepng($i);echo base64_encode(ob_get_clean());'], text=True)
+        uploaded = await self.request(self.app, root, {'image_base64': image})
+        photo = uploaded['data']['photo']
+        view = await self.request(self.app, root+'/'+photo)
+        self.assertIn('image_base64', view['data'])
+        other = await self.connect()
+        await self.auth(other, token='bob', household='2')
+        rejected = await self.request(other, '/households/2/shopping-list/photos/'+photo)
+        self.assertEqual(rejected['status'], 404)
+
     async def test_rendered_recipe_and_association_http_responses(self):
         base=f'http://127.0.0.1:{self.media_port}'
         async with self.session.get(base+'/recipes/1') as response:

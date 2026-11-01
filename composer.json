@@ -8,6 +8,8 @@
     "ext-pdo": "*",
     "ext-pdo_mysql": "*",
     "ext-json": "*",
+    "ext-gd": "*",
+    "ext-exif": "*",
     "ext-curl": "*",
     "ext-openssl": "*",
     "ext-mbstring": "*",
