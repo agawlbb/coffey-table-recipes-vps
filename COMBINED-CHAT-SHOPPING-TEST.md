@@ -12,3 +12,10 @@ uses existing deploy.py, preserving private configuration and persistent state.
 Focused checks: recipe_chat.php (56), shopping_photos.php (orientation, resize,
 metadata stripping, transparency, decode limits), shopping_lists.php,
 shopping_socket.php and data_socket.php passed; composer validation passed.
+
+Combined socket validation: 33 tests, 32 passed and one skipped. Source 7541c5a
+was deployed using deploy.py. Existing CPU policy verified (1024 shares,
+unlimited cpu.max); public health 200 and invalid AI authentication 401.
+A deployed shopping image upload/read converted a synthetic PNG to JPEG in
+disposable /tmp storage and cleaned it afterward, without database writes.
+Recipe-chat service source is unchanged from its restored-reasoning branch.
