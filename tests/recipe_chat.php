@@ -13,6 +13,8 @@ $transport=static function($payload)use(&$payloads,&$reply,&$calls,&$failure){$c
 $service=new RecipeChatService($pdo,['api_key'=>'fixture-only','model'=>'fixture-model'],$root,$transport);
 $body=['request_id'=>str_repeat('a',32),'turn_id'=>str_repeat('1',32),'mode'=>'create','action'=>'message','message'=>'Make egg soup.','revision'=>0,'draft_view'=>true];
 $source=['id'=>'7','revision'=>3,'title'=>'Original soup','original_language'=>'en','measurement_system'=>'us','source_type'=>'personal','source_text'=>'PRIVATE SOURCE','photos'=>[['storage_key'=>'PRIVATE PHOTO']],'category_assignments'=>[['category_id'=>'8']],'parent_recipe_id'=>'5','pairings'=>[['id'=>'6']],'ingredients'=>[['id'=>'PRIVATE INGREDIENT','original_text'=>'2 eggs','group_id'=>'PRIVATE GROUP']],'groups'=>[['id'=>'PRIVATE GROUP','title'=>'Soup']],'steps'=>[['id'=>'PRIVATE STEP','instruction'=>'Simmer for 2 minutes.']],'actions'=>[['id'=>'PRIVATE ACTION','step_id'=>'PRIVATE STEP','action_type'=>'timer','duration_seconds'=>120]]];
+mkdir($root.'/media/recipes',0700,true);$photoBytes=base64_decode(trim(file_get_contents(__DIR__.'/fixtures/photo.base64')));$photoKey=str_repeat('f',48).'.jpg';file_put_contents($root.'/media/recipes/'.$photoKey,$photoBytes);
+$source['photos']=[['id'=>'private-photo','storage_key'=>'vps/recipes/'.$photoKey,'is_cover'=>1,'caption'=>'Original cover','attribution'=>'Original photographer']];
 $catalog=[['id'=>'1','label'=>'Meals','parent_label'=>null],['id'=>'8','label'=>'Soups','parent_label'=>'Meals']];
 $statePath=static fn($b)=>$root.'/recipe-chats/'.hash('sha256',json_encode(['alice','house-one',$b['request_id']])).'.json';
 try {
@@ -24,8 +26,9 @@ try {
  $payload=$payloads[0];checkChat(!isset($payload['reasoning']) && $payload['max_output_tokens']===10000 && $payload['store']===false,'Original model reasoning defaults and output budget restored');
  checkChat(!str_contains(json_encode($payload['text']['format']),'Do not add techniques') && isset($payload['text']['format']['schema']['properties']['recipe']['anyOf'][0]['properties']['description']),'Editor schema retains field types without extraction instructions that constrain cooking');
  $original=explode("\n",trim(file_get_contents(__DIR__.'/fixtures/recipe-chat-pre-optimization-prompt.txt')));$current=explode("\n",$payload['instructions']);
- foreach([0,1,4,5,6] as $paragraph)checkChat($original[$paragraph]===$current[$paragraph],'Original cooking/context policy paragraph '.$paragraph.' restored verbatim');
+ foreach([1,4,5,6] as $paragraph)checkChat($original[$paragraph]===$current[$paragraph],'Original cooking/context policy paragraph '.$paragraph.' restored verbatim');
  checkChat(str_contains($current[2],'complete recipe every turn') && !str_contains($payload['instructions'],'value_json'),'Whole recipes replace the fragile patch protocol');
+ checkChat(str_starts_with($current[0],$original[0]) && str_contains($current[0],'SAME holistic look') && str_contains($current[0],'direct instruction deserves the same thoughtful explanation'),'Direct instructions and hypotheticals get holistic cooking evaluation and chatty explanations');
  $before=$calls;checkChat($service->handle($body,'alice','house-one',null,[])===$first && $calls===$before,'Lost reply replays without AI');
  chatError(fn()=>$service->handle(array_replace($body,['message'=>'Different']),'alice','house-one',null,[]),'chat_turn_changed');
  $recipe['ingredients']=[['original_text'=>'2 cups water']];$reply['recipe']=$recipe;$reply['message']='I removed the eggs; the soup will be thinner.';
@@ -47,7 +50,12 @@ try {
  $sent=json_encode(end($payloads));foreach(['PRIVATE SOURCE','PRIVATE PHOTO','PRIVATE INGREDIENT','PRIVATE GROUP','PRIVATE STEP','PRIVATE ACTION'] as $private)checkChat(!str_contains($sent,$private),'Private source field excluded: '.$private);
  checkChat($seed['working_recipe']['groups'][0]['title']==='Soup' && $seed['working_recipe']['actions'][0]['duration_seconds']===120,'Original component and action cooking facts retained');
  $base=array_replace($existing,['turn_id'=>str_repeat('2',32),'revision'=>1,'action'=>'prepare','message'=>'','save_as'=>'variation']);$before=$calls;$variation=$service->handle($base,'alice','house-one',$source,$catalog)['draft']['recipe'];
- checkChat($calls===$before && $variation['parent_recipe_id']==='7' && !isset($variation['id']) && $variation['photos']===[],'Variation locally uses trusted parent and independent identity');
+ checkChat($calls===$before && $variation['parent_recipe_id']==='7' && !isset($variation['id']) && count($variation['photos'])===1 && base64_decode($variation['photos'][0]['image_base64'])===$photoBytes && $variation['photos'][0]['attribution']==='Original photographer','Variation locally uses trusted parent, independent identity and a copy of the original picture');
+ checkChat(!str_contains($sent,$photoKey) && !str_contains($sent,'Original photographer'),'Original picture metadata never reaches cooking AI');
+ $missingSource=$source;$missingSource['photos'][0]['storage_key']='vps/recipes/'.str_repeat('a',48).'.jpg';
+ $missing=array_replace($body,['request_id'=>str_repeat('d',32),'mode'=>'existing']);$service->handle($missing,'alice','house-one',$missingSource,$catalog);$before=$calls;
+ chatError(fn()=>$service->handle(array_replace($missing,['turn_id'=>str_repeat('2',32),'revision'=>1,'action'=>'prepare','message'=>'','save_as'=>'variation']),'alice','house-one',$missingSource,$catalog),'photo_unavailable');
+ checkChat($calls===$before,'Missing original picture fails without an image AI request or recipe save');
  $edit=$service->handle(array_replace($base,['turn_id'=>str_repeat('3',32),'revision'=>2,'save_as'=>'edit']),'alice','house-one',$source,$catalog)['draft']['recipe'];
  foreach(['id','revision','photos','source_type','source_text','parent_recipe_id','pairings'] as $field)checkChat($edit[$field]===$source[$field],'Local edit preserves '.$field);
  checkChat($edit['category_assignments'][0]['category_id']==='8','Unchanged original category survives normalization and review');

@@ -23,7 +23,7 @@ final class RecipeVariationService
     }
 
     /** Read only the authorized recipe's locally hosted cover, never arbitrary URLs. */
-    private function parentCover(array $source): ?array {
+    public function parentCover(array $source): ?array {
         $photos=$source['photos'] ?? [];
         $cover=null;
         foreach ($photos as $photo) if (!empty($photo['is_cover'])) { $cover=$photo; break; }

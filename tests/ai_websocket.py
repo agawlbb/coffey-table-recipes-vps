@@ -1,5 +1,6 @@
 """AI child-process execution over real sockets, with disposable SQL and a fake provider."""
 import asyncio
+import base64
 import hashlib
 from pathlib import Path
 from contextlib import closing
@@ -11,7 +12,12 @@ import data_websocket as data
 
 class AiWireTests(unittest.IsolatedAsyncioTestCase):
     server_fixture = 'tests/fixtures/ai_socket_server.php'
-    asyncSetUp = shopping.ShoppingWireTests.asyncSetUp
+    async def asyncSetUp(self):
+        await shopping.ShoppingWireTests.asyncSetUp(self)
+        media = Path(self.runtime) / 'state/media/recipes'
+        media.mkdir(parents=True, exist_ok=True)
+        self.original_photo = base64.b64decode((Path(__file__).parent / 'fixtures/photo.base64').read_text())
+        (media / ('a' * 48 + '.jpg')).write_bytes(self.original_photo)
     asyncTearDown = shopping.ShoppingWireTests.asyncTearDown
     connect = shopping.ShoppingWireTests.connect
     auth = data.DataWireTests.auth
@@ -99,6 +105,7 @@ class AiWireTests(unittest.IsolatedAsyncioTestCase):
         variation, _ = await self.result()
         self.assertEqual(variation['type'], 'response', variation)
         self.assertEqual(variation['data']['draft']['recipe']['parent_recipe_id'], '1')
+        self.assertEqual(base64.b64decode(variation['data']['draft']['recipe']['photos'][0]['image_base64']), self.original_photo)
         await self.send_ai('/households/1/recipe-chat', {**body, 'turn_id': '3' * 32,
                            'revision': 2, 'message': '', 'action': 'prepare', 'save_as': 'edit'})
         edit, _ = await self.result()
@@ -149,9 +156,7 @@ class AiWireTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(denied['status'], status, denied)
 
     async def test_recipe_chat_variation_and_edit_keep_original_unsaved(self):
-        # The fixture must not fetch any real parent photo.
-        with closing(sqlite3.connect(self.database)) as db, db:
-            db.execute("UPDATE recipe_photos SET storage_key='unavailable-fixture'")
+        # Parent pictures are synthetic local fixtures; no hosting fetch or image AI.
         await self.auth(self.app, scope='ai')
         for mode in ['variation', 'edit']:
             body = dict(request_id=('b' if mode == 'edit' else 'c') * 32,
@@ -175,6 +180,37 @@ class AiWireTests(unittest.IsolatedAsyncioTestCase):
                 self.assertNotIn('id', recipe)
             with closing(sqlite3.connect(self.database)) as db:
                 self.assertEqual(db.execute('SELECT title,revision FROM recipes WHERE id=1').fetchone(), ('Soup', 2))
+
+    async def test_chat_variation_picture_survives_direct_save_and_receipt_replay(self):
+        await self.auth(self.app, scope='ai')
+        body = dict(request_id='f' * 32, turn_id='1' * 32, revision=0, mode='existing', recipe_id='1', action='message', message='Change this soup.', draft_view=True)
+        await self.send_ai('/households/1/recipe-chat', body)
+        reply, _ = await self.result()
+        self.assertEqual(reply['type'], 'response', reply)
+        await self.send_ai('/households/1/recipe-chat', {**body, 'turn_id':'2'*32, 'revision':1, 'action':'prepare', 'message':'', 'save_as':'variation'})
+        prepared, _ = await self.result()
+        self.assertEqual(prepared['type'], 'response', prepared)
+        recipe = {**prepared['data']['draft']['recipe'], 'client_save_id':'photo-direct-save-1'}
+        other = await self.connect()
+        await self.auth(other)
+        saved = []
+        for request_id in ['save', 'retry']:
+            await other.send_json(dict(v=1,type='request',id=request_id,path='/households/1/recipes',body=recipe))
+            while True:
+                response = await self.message(other)
+                if response.get('id') == request_id and response['type'] in ('response','error'):
+                    break
+            self.assertEqual(response['type'], 'response', response)
+            saved.append(response['data']['recipe'])
+        self.assertEqual(saved[0], saved[1])
+        self.assertNotEqual(str(saved[0]['id']), '1')
+        self.assertEqual(saved[0]['parent_recipe_id'], '1')
+        photo = saved[0]['photos'][0]
+        self.assertNotEqual(photo['storage_key'], 'media/recipes/'+'a'*48+'.jpg')
+        copied = Path(self.runtime) / 'state/media/recipes' / Path(photo['storage_key']).name
+        self.assertEqual(copied.read_bytes(), self.original_photo)
+        with closing(sqlite3.connect(self.database)) as db:
+            self.assertEqual(db.execute('SELECT title,revision FROM recipes WHERE id=1').fetchone(), ('Soup',2))
 
     async def test_cooking_context_survives_workers_and_is_private_to_each_user(self):
         with closing(sqlite3.connect(self.database)) as db, db:
