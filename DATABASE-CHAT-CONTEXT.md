@@ -77,3 +77,30 @@ Automatic approval review rejected inspecting deployment tooling for administrat
 credential configuration as credential probing beyond the migration. Administrator
 access was not attempted. The prepared table definition requires explicit approval
 for administrator access before the live migration/deployment can continue.
+
+
+## Approved and verified cutover — 2026-11-01
+
+The user explicitly approved database administrator access. Only the prepared
+`user_recipe_context` table was created using the existing administrator identity;
+no credential values were printed and no runtime database privileges were expanded.
+The normal runtime account then imported **one profile with one fact**, read back
+and verified against the original. The backend was stopped during import.
+
+The original preference directory is retained, unchanged, at
+`/opt/services/ctr-backend/state/recipe-user-context-file-backup-20261101T171225Z`.
+The active `recipe-user-context` directory no longer exists. Runtime context is
+now read only from MariaDB; temporary conversations remain in `recipe-chats/`.
+
+Deployed application source is `78419a00613bc0cc0dfb6e5d5efd852a137faede` from
+`feature/database-chat-context`. The normal deployer copied source and restarted
+the service, preserving private configuration hashes. Every installed src/bin
+file, entry point and dependency lock matches the task source. The container is
+running with zero restarts; CpuShares=1024 and unlimited cpu.max were verified.
+Public HTTPS health returned 200/ok and AI WebSocket invalid-token auth returned
+401. A real runtime SQL read matched all original facts/revisions/IDs/scopes;
+two independent connections verified the account lock is exclusive and releases
+correctly, without changing the context. Archived file contents and SQL still
+matched exactly after verification. No live provider request, recipe write, app
+build, InMotion deployment or main integration was performed. This supersedes
+the blocked status above; both earlier feature branches remain untouched.
