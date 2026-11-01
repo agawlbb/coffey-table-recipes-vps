@@ -70,6 +70,13 @@ class AccountWireTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((await self.request(self.app, '/me'))['data']['households'][0]['name'], 'Family')
         self.assertEqual((await self.request(self.app, '/households', dict(name='Again', person_name='Owner')))['status'], 409)
 
+    async def test_name_save_uses_account_scope_and_survives_login_metadata(self):
+        await self.auth(self.app, 'account', 'new', None)
+        changed = await self.request(self.app, '/me/name', dict(display_name='  Lex  '))
+        self.assertEqual(changed['data']['user']['display_name'], 'Lex')
+        self.assertEqual((await self.request(self.app, '/me'))['data']['user']['display_name'], 'Lex')
+        self.assertEqual((await self.request(self.app, '/me/name', dict(display_name='')))['status'], 422)
+
     async def test_mail_does_not_block_heartbeat_or_another_connection(self):
         await self.auth(self.app, 'account', 'new', None)
         await self.app.send_json(dict(v=1, type='request', id='mail', path='/me/verification-email', body={}))

@@ -8,7 +8,7 @@ final class AccountService {
         private $sendVerification,private string $appUrl,private $deleteFirebase=null,private $listFirebase=null,private $progress=null) {}
 
     public static function matches(string $path): bool {
-        return preg_match('#^/(?:me(?:/verification-email|/child-mode)?|admin/(?:users|households|households/[1-9][0-9]*/ai-images|(?:users|people|firebase)/[A-Za-z0-9_-]{1,128}/delete|users/[1-9][0-9]*/reset-child-mode)|households|households/[1-9][0-9]*/home-assistant-connections(?:/[a-f0-9]{64})?|households/[1-9][0-9]*/people/[1-9][0-9]*/invitations|invitations/[1-9][0-9]*/respond)$#D',parse_url($path,PHP_URL_PATH)?:'')===1;
+        return preg_match('#^/(?:me(?:/name|/verification-email|/child-mode)?|admin/(?:users|households|households/[1-9][0-9]*/ai-images|(?:users|people|firebase)/[A-Za-z0-9_-]{1,128}/delete|users/[1-9][0-9]*/reset-child-mode)|households|households/[1-9][0-9]*/home-assistant-connections(?:/[a-f0-9]{64})?|households/[1-9][0-9]*/people/[1-9][0-9]*/invitations|invitations/[1-9][0-9]*/respond)$#D',parse_url($path,PHP_URL_PATH)?:'')===1;
     }
 
     public function handle(string $token,string $path,?array $body): array {
@@ -20,6 +20,10 @@ final class AccountService {
         $modes=new ChildMode($this->pdo);
         $policy=$modes->state($identity);
         $modes->guard($identity,$route,$body===null?'GET':'POST');
+        if ($route==='/me/name') {
+            if ($body===null) throw new HttpError(405,'method_not_allowed','Use a write request.');
+            return ['user'=>$households->changeName($user['id'],$this->name($body,'display_name'))];
+        }
         if ($route==='/me/child-mode') {
             return $body===null ? $policy+['people_child_modes'=>(object)$modes->peopleChildModes($user['id'])]
                 : $modes->change($identity,$body);
