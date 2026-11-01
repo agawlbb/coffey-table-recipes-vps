@@ -35,3 +35,9 @@ Validation:
 The Flutter counterpart removes View changes, replaces Review and save with Save,
 skips the editor, retains shared-edit confirmation/retry receipts, and opens the
 saved recipe viewer. No app build/release is authorized by “implement”.
+
+Deployment: source 954fbfd copied with the existing deploy.py and backend
+restarted. Public health returned 200; invalid AI WebSocket authentication was
+rejected with 401. Deployed chat/variation source matched the task checkout;
+shopping-photo service is retained unchanged. CPU shares 1024, unlimited cpu.max.
+No InMotion deployment, database migration, main merge, app build or release.
