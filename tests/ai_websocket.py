@@ -65,6 +65,48 @@ class AiWireTests(unittest.IsolatedAsyncioTestCase):
         with closing(sqlite3.connect(self.database)) as db:
             self.assertEqual(db.execute('SELECT COUNT(*) FROM recipes').fetchone()[0], initial_count)
 
+    async def test_separate_working_recipe_chat(self):
+        await self.auth(self.app, scope='ai')
+        body = dict(request_id='8' * 32, turn_id='1' * 32, revision=0,
+                    mode='create', action='message', message='Make soup.', draft_view=True)
+        await self.send_ai('/households/1/recipe-chat', body)
+        reply, _ = await self.result()
+        self.assertEqual(reply['type'], 'response', reply)
+        data = reply['data']
+        self.assertIn('2 cups water', data['recipe_text'])
+        self.assertNotIn('Current recipe draft', data['message'])
+        self.assertNotIn('draft', data)
+        await self.send_ai('/households/1/recipe-chat', body)
+        replay, _ = await self.result()
+        self.assertEqual(data, replay['data'])
+        await self.send_ai('/households/1/recipe-chat', {**body, 'turn_id': '2' * 32,
+                           'revision': 1, 'message': '', 'action': 'prepare'})
+        prepared, _ = await self.result()
+        self.assertEqual(prepared['type'], 'response', prepared)
+        self.assertEqual(prepared['data']['recipe_text'], data['recipe_text'])
+        self.assertIn('draft', prepared['data'])
+
+    async def test_review_selects_variation_or_edit_after_chat(self):
+        await self.auth(self.app, scope='ai')
+        body = dict(request_id='9' * 32, turn_id='1' * 32, revision=0,
+                    mode='existing', recipe_id='1', action='message', message='Improve soup.', draft_view=True)
+        await self.send_ai('/households/1/recipe-chat', body)
+        reply, _ = await self.result()
+        self.assertEqual(reply['type'], 'response', reply)
+        self.assertNotIn('draft', reply['data'])
+        await self.send_ai('/households/1/recipe-chat', {**body, 'turn_id': '2' * 32,
+                           'revision': 1, 'message': '', 'action': 'prepare', 'save_as': 'variation'})
+        variation, _ = await self.result()
+        self.assertEqual(variation['type'], 'response', variation)
+        self.assertEqual(variation['data']['draft']['recipe']['parent_recipe_id'], '1')
+        await self.send_ai('/households/1/recipe-chat', {**body, 'turn_id': '3' * 32,
+                           'revision': 2, 'message': '', 'action': 'prepare', 'save_as': 'edit'})
+        edit, _ = await self.result()
+        self.assertEqual(edit['type'], 'response', edit)
+        self.assertEqual(str(edit['data']['draft']['recipe']['id']), '1')
+        with closing(sqlite3.connect(self.database)) as db:
+            self.assertEqual(db.execute('SELECT title,revision FROM recipes WHERE id=1').fetchone(), ('Soup', 2))
+
     async def test_recipe_chat_all_households_and_prepare_without_saving(self):
         with closing(sqlite3.connect(self.database)) as db, db:
             db.execute('UPDATE households SET ai_images_enabled=0 WHERE id=1')
@@ -193,8 +235,10 @@ class AiWireTests(unittest.IsolatedAsyncioTestCase):
             db.execute('DELETE FROM household_memberships WHERE user_id=1 AND household_id=1')
         denied, _ = await self.result()
         self.assertEqual(denied['status'], 404, denied)
-        profile = Path(self.runtime) / 'state' / 'recipe-user-context' / (hashlib.sha256(b'1').hexdigest() + '.json')
-        self.assertFalse(profile.exists(), 'Revoked requests must not durably learn preferences')
+        with closing(sqlite3.connect(self.database)) as db:
+            row = db.execute('SELECT state_json FROM user_recipe_context WHERE user_id=1').fetchone()
+            self.assertEqual(__import__('json').loads(row[0])['facts'], [], 'Revoked requests must not durably learn preferences')
+        self.assertFalse((Path(self.runtime) / 'state' / 'recipe-user-context').exists())
 
     async def test_household_admin_and_image_permissions(self):
         await self.auth(self.app, scope='ai')

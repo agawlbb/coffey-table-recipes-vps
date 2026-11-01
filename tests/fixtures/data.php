@@ -51,7 +51,8 @@ CREATE TABLE IF NOT EXISTS cooking_event_recipes(household_id INTEGER,event_id I
 CREATE TABLE deleted_recipe_cooking_history(household_id INTEGER,event_id INTEGER,recipe_id INTEGER,recipe_title TEXT,recipe_revision INTEGER);
 INSERT INTO meal_plans VALUES (1,0,'America/New_York');");
 $pdo->exec('CREATE TABLE household_restaurant_lists(household_id INTEGER PRIMARY KEY,revision INTEGER,items_json TEXT)');
-$pdo->exec("CREATE TABLE users(id INTEGER PRIMARY KEY,firebase_uid TEXT,disabled INTEGER,display_name TEXT,child_mode INTEGER DEFAULT 0);
+$pdo->exec("CREATE TABLE user_recipe_context(user_id INTEGER PRIMARY KEY,state_json TEXT NOT NULL);
+CREATE TABLE users(id INTEGER PRIMARY KEY,firebase_uid TEXT,disabled INTEGER,display_name TEXT,child_mode INTEGER DEFAULT 0);
 INSERT INTO users(id,firebase_uid,disabled,display_name) VALUES(1,'alice',0,'Alice'),(2,'bob',0,'Bob'),(3,'disabled',1,'Disabled');
 CREATE TABLE shopping_connections(token_hash TEXT PRIMARY KEY,household_id INTEGER,created_at TEXT);
 CREATE TABLE recipe_relationship_lock(id INTEGER PRIMARY KEY);

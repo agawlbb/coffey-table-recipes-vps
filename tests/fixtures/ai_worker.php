@@ -3,12 +3,14 @@ declare(strict_types=1);
 require_once dirname(__DIR__,2).'/bootstrap.php';
 final class AiFixturePDO extends PDO {
     public function prepare(string $query,array $options=[]): PDOStatement|false {
-        return parent::prepare(str_replace([' FOR UPDATE',' <=> '],['',' IS '],$query),$options);
+        return parent::prepare(str_replace([' FOR UPDATE',' <=> ','INSERT IGNORE'],['',' IS ','INSERT OR IGNORE'],$query),$options);
     }
 }
 $file=getenv('CTR_TEST_DATABASE');
 if (!$file || !str_starts_with(basename($file),'ctr-wire-')) throw new RuntimeException('Disposable test database required.');
 $pdo=new AiFixturePDO('sqlite:'.$file);
+require __DIR__.'/context_database.php';
+contextTestLocks($pdo,(getenv('CTR_STORAGE') ?: sys_get_temp_dir()).'/test-sql-locks');
 $verify=static function(string $token): array {
     if (!in_array($token,['alice','bob','disabled'],true)) throw new HttpError(401,'invalid_token','Invalid token.');
     return ['uid'=>$token];
