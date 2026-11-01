@@ -48,6 +48,8 @@ class DeploymentTests(unittest.TestCase):
             self.assertFalse(any('cpanel' in str(call).lower() for call in commands))
             self.assertLess(next(i for i, c in enumerate(commands) if 'stop' in c),
                             next(i for i, c in enumerate(commands) if 'up' in c))
+            self.assertLess(next(i for i, c in enumerate(commands) if 'imagewebp' in str(c)),
+                            next(i for i, c in enumerate(commands) if 'stop' in c))
 
     def test_effective_cpu_policy_accepts_shares_and_rejects_hard_quota(self):
         for shares, cpu_max, valid in (

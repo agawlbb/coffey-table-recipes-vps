@@ -189,4 +189,22 @@ $media->onMessage=static function(TcpConnection $c, Workerman\Protocols\Http\Req
         $c->send(new Workerman\Protocols\Http\Response(503,['Content-Type'=>'application/json','Cache-Control'=>'no-store'],'{"error":{"code":"service_unavailable","message":"Recipe service temporarily unavailable."}}'));
     }
 };
+// Image decoding/encoding runs in its own process. Uploads only save originals;
+// scanning also recovers pending work after restarts and covers AI-worker saves.
+$images=new Worker();
+$images->name='ctr-photo-optimizer';
+$images->count=1;
+$images->onWorkerStart=static function(): void {
+    $optimizer=new RecipeImageOptimizer(CTR_STORAGE.'/media/recipes');
+    $pending=[]; $lastScan=0;
+    Timer::add(1,static function() use ($optimizer,&$pending,&$lastScan): void {
+        try {
+            if (!$pending && time()-$lastScan>=30) {
+                $lastScan=time();
+                if (is_dir(CTR_STORAGE.'/media/recipes')) $pending=$optimizer->pending();
+            }
+            if ($pending) $optimizer->optimize(array_shift($pending));
+        } catch (Throwable $error) { error_log('Photo optimization failed: '.$error->getMessage()); }
+    });
+};
 Worker::runAll();
