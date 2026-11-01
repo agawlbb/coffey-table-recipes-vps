@@ -22,6 +22,15 @@ Child mode hides editing controls in the app. Shopping writes do not make a
 server-side child-mode policy call. Firebase authentication and household access
 checks remain enforced by this service.
 
+## Structured chat drafts
+
+Chat keeps one structured working recipe and applies validated changes. New
+structured drafts open Review with no AI conversion. Provider history is bounded,
+undo snapshots stay on the server, and private token/timing metrics are available.
+See [the structured chat contract and measurements](STRUCTURED-RECIPE-CHAT.md),
+including the one-time handling of existing text-only sessions. This supersedes
+the historical plain-text/second-AI-pass chat descriptions below.
+
 ## Cooking context storage
 
 Learned per-user cooking preferences use the private VPS database table

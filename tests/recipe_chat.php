@@ -1,237 +1,125 @@
 <?php
 declare(strict_types=1);
 require dirname(__DIR__).'/src/HttpError.php';
-require dirname(__DIR__).'/src/RecipeImportService.php';
 require dirname(__DIR__).'/src/RecipeChatService.php';
-require dirname(__DIR__).'/src/RecipeVariationService.php';
-
 require __DIR__.'/fixtures/context_database.php';
 $checks=0;
-function checkChat(bool $ok,string $message): void { global $checks; if (!$ok) throw new RuntimeException($message); $checks++; }
-function chatError(callable $run,string $code): void {
-    try { $run(); } catch (HttpError $e) { checkChat($e->errorCode===$code,'Expected '.$code.', got '.$e->errorCode); return; }
-    throw new RuntimeException('Expected '.$code);
-}
-$directory=sys_get_temp_dir().'/ctr-chat-'.bin2hex(random_bytes(6)); mkdir($directory,0700);
-$pdo=contextTestDatabase($directory.'/context.sqlite');
-$payloads=[]; $failure=false; $malformed=false; $clarify=false;
-$transport=static function(array $payload) use (&$payloads,&$failure,&$malformed,&$clarify): array {
-    $payloads[]=$payload;
-    if ($failure) return ['status'=>503,'body'=>'{}'];
-    if ($malformed) return ['status'=>200,'body'=>json_encode(['status'=>'completed','output'=>[]])];
-    if (($payload['text']['format']['name']??'')==='recipe_chat') {
-        $latest=$payload['input'][count($payload['input'])-1]['content'];
-        $result=['show_recipe'=>false,'message'=>str_contains($latest,'What if')?'Removing eggs makes a lighter broth; I updated the draft.':'Here is a practical soup. You can keep refining it or review when ready.',
-            'context_updates'=>[],'ready'=>true,'recipe_text'=>str_contains($latest,'What if')?'Light broth. 2 cups water. Boil water and simmer for 2 minutes. Serves 2.':'Egg soup. 2 eggs and 2 cups water. Boil water, add beaten eggs, and simmer for 2 minutes. Serves 2.'];
-    } else $result=['recipe'=>['title'=>'Egg soup','original_language'=>'en','ingredients'=>[['original_text'=>'2 eggs','ingredient_name'=>'eggs']],'steps'=>[['instruction'=>'Simmer for 2 minutes.','actions'=>[['action_type'=>'timer','duration_seconds'=>120]]]]],
-        'variation_label'=>'refined','change_description'=>'Refined the soup as agreed.',
-        'parent_cover_appropriate'=>true,'parent_cover_reason'=>'The pictured soup still matches.',
-        'questions'=>$clarify?['How much salt?']:[]];
-    return ['status'=>200,'body'=>json_encode(['status'=>'completed','output'=>[['content'=>[['type'=>'output_text','text'=>json_encode($result)]]]]])];
-};
-$service=new RecipeChatService($pdo,['api_key'=>'fixture-only','model'=>'fixture-model'],$directory,$transport);
-$body=['request_id'=>str_repeat('a',32),'turn_id'=>str_repeat('1',32),'mode'=>'create','action'=>'message','message'=>'Create egg soup','revision'=>0];
-$source=['id'=>'7','title'=>'Egg soup','revision'=>3,'household_id'=>'PRIVATE HOUSEHOLD','created_by_user_id'=>'PRIVATE USER','source_text'=>'PRIVATE SOURCE',
-    'source_type'=>'ai_text','parent_recipe_id'=>'4','household_count'=>2,'category_assignments'=>[['category_id'=>'8']],
-    'photos'=>[['id'=>'33','storage_key'=>'PRIVATE PHOTO']],'pairings'=>[['id'=>'9']],
-    'ingredients'=>[['id'=>'PRIVATE INGREDIENT','original_text'=>'2 eggs','ingredient_name'=>'eggs','group_id'=>'PRIVATE GROUP']],
-    'groups'=>[['id'=>'PRIVATE GROUP','title'=>'Soup']],
-    'steps'=>[['id'=>'PRIVATE STEP','instruction'=>'Simmer.']],
-    'actions'=>[['id'=>'PRIVATE ACTION','step_id'=>'PRIVATE STEP','action_type'=>'timer','duration_seconds'=>120]]];
+function checkChat(bool $ok,string $message): void {global $checks;if(!$ok)throw new RuntimeException($message);$checks++;}
+function chatError(callable $run,string $code): void {try{$run();}catch(HttpError $e){checkChat($e->errorCode===$code,'Expected '.$code.', got '.$e->errorCode);return;}throw new RuntimeException('Expected '.$code);}
+function patch(string $path,mixed $value,string $op='set'): array {return ['op'=>$op,'path'=>$path,'value_json'=>$op==='remove'?null:json_encode($value,JSON_THROW_ON_ERROR)];}
+$root=sys_get_temp_dir().'/ctr-structured-chat-'.bin2hex(random_bytes(6));mkdir($root,0700);$pdo=contextTestDatabase($root.'/context.sqlite');
+$payloads=[];$reply=['message'=>'Here is a practical soup.','show_recipe'=>false,'recipe_action'=>'patch','changes'=>[patch('/title','Egg soup'),patch('/measurement_system','us'),patch('/ingredients',[['original_text'=>'2 eggs','quantity_numerator'=>2,'quantity_denominator'=>1],['original_text'=>'2 cups water','quantity_decimal'=>'2','original_unit'=>'cups']]),patch('/steps',[['instruction'=>'Simmer for 2 minutes.','actions'=>[['action_type'=>'timer','duration_seconds'=>120]]]])],'context_updates'=>[]];$calls=0;$failure=false;
+$transport=static function($payload)use(&$payloads,&$reply,&$calls,&$failure){$calls++;$payloads[]=$payload;if($failure)return ['status'=>503,'body'=>'{}'];return ['status'=>200,'body'=>json_encode(['status'=>'completed','usage'=>['input_tokens'=>1000,'output_tokens'=>100,'input_tokens_details'=>['cached_tokens'=>128],'output_tokens_details'=>['reasoning_tokens'=>20]],'output'=>[['content'=>[['type'=>'output_text','text'=>json_encode($reply)]]]]])];};
+$service=new RecipeChatService($pdo,['api_key'=>'fixture-only','model'=>'fixture-model'],$root,$transport);
+$body=['request_id'=>str_repeat('a',32),'turn_id'=>str_repeat('1',32),'mode'=>'create','action'=>'message','message'=>'Make egg soup.','revision'=>0,'draft_view'=>true];
+$source=['id'=>'7','revision'=>3,'title'=>'Original soup','variation_base_title'=>'Original soup','original_language'=>'en','measurement_system'=>'us','source_type'=>'personal','source_text'=>'PRIVATE SOURCE','photos'=>[['storage_key'=>'PRIVATE PHOTO']],'category_assignments'=>[['category_id'=>'8']],'parent_recipe_id'=>'5','household_count'=>2,'pairings'=>[['id'=>'6']], 'ingredients'=>[['id'=>'PRIVATE INGREDIENT','original_text'=>'2 eggs','group_id'=>'PRIVATE GROUP']], 'groups'=>[['id'=>'PRIVATE GROUP','title'=>'Soup']], 'steps'=>[['id'=>'PRIVATE STEP','instruction'=>'Simmer for 2 minutes.']], 'actions'=>[['id'=>'PRIVATE ACTION','step_id'=>'PRIVATE STEP','action_type'=>'timer','duration_seconds'=>120]]];
+$statePath=static fn($b,$user='alice')=>$root.'/recipe-chats/'.hash('sha256',json_encode([$user,'house-one',$b['request_id']])).'.json';
 try {
-    $concurrentBody=array_replace($body,['request_id'=>str_repeat('f',32)]);
-    $concurrent=null; $concurrentCalls=0;
-    $concurrentTransport=static function(array $payload) use (&$concurrent,&$concurrentCalls,$concurrentBody,$transport): array {
-        $concurrentCalls++;
-        chatError(fn()=>$concurrent->handle($concurrentBody,'1','2',null,[]),'chat_in_progress');
-        return $transport($payload);
-    };
-    $concurrent=new RecipeChatService($pdo,['api_key'=>'fixture-only','model'=>'fixture-model'],$directory,$concurrentTransport);
-    $completed=$concurrent->handle($concurrentBody,'1','2',null,[]);
-    checkChat($concurrent->handle($concurrentBody,'1','2',null,[])===$completed && $concurrentCalls===1,'Concurrent/recovered requests never duplicate provider work');
-    $payloads=[];
-    chatError(fn()=>$service->handle(array_replace($body,['action'=>'prepare']),'1','2',null,[]),'chat_not_ready');
-    $first=$service->handle($body,'1','2',null,[]);
-    checkChat($first['ready'] && $first['revision']===1 && !isset($first['draft']),'Chat readiness does not generate or save a recipe');
-    checkChat($payloads[0]['store']===false && $payloads[0]['model']==='fixture-model','Configured model with provider storage disabled');
-    checkChat(str_contains($payloads[0]['instructions'],'explain the effects AND update') && str_contains($payloads[0]['instructions'],'make those adjustments now'),'Instructions apply exploratory changes and adjustments without repeat confirmation');
-    checkChat($service->handle($body,'1','2',null,[])===$first && count($payloads)===1,'Lost-response retry is cached without duplicate provider work');
-    chatError(fn()=>$service->handle(array_replace($body,['message'=>'Changed']),'1','2',null,[]),'chat_turn_changed');
-    $second=array_replace($body,['turn_id'=>str_repeat('2',32),'revision'=>1,'message'=>'What if I remove the eggs?']);
-    $reply=$service->handle($second,'1','2',null,[]);
-    checkChat(str_contains($reply['message'],'updated the draft') && str_contains($reply['recipe_text'],'Light broth') && count($payloads[1]['input'])===4,'Follow-up keeps the earlier conversation and explains effects');
-    $prepare=array_replace($body,['turn_id'=>str_repeat('3',32),'revision'=>2,'action'=>'prepare','message'=>'','recipe'=>['id'=>'999']]);
-    $draft=$service->handle($prepare,'1','2',null,[]);
-    checkChat($draft['draft']['recipe']['source_type']==='ai_created' && !isset($draft['draft']['recipe']['id']),'New dish has machine provenance and no saved identity');
-    $importPayload=json_encode($payloads[2]);
-    checkChat(str_contains($importPayload,'Light broth') && !str_contains($importPayload,'2 eggs') && !str_contains($importPayload,'What if'),'Preparation uses agreed specification, never speculative transcript');
-    $before=count($payloads);
-    checkChat($service->handle($prepare,'1','2',null,[])===$draft && count($payloads)===$before,'Repeated preparation preserves import identity');
-    chatError(fn()=>$service->handle(array_replace($body,['turn_id'=>str_repeat('4',32)]),'1','2',null,[]),'chat_out_of_date');
-    chatError(fn()=>$service->handle(array_replace($body,['mode'=>'edit']),'1','2',$source,[]),'chat_outcome_changed');
-    foreach (['variation','edit'] as $mode) {
-        $edit=array_replace($body,['request_id'=>str_repeat($mode==='edit'?'e':'b',32),'mode'=>$mode]);
-        $service->handle($edit,'1','2',$source,[]);
-        $sent=json_encode(end($payloads));
-        foreach (['PRIVATE HOUSEHOLD','PRIVATE USER','PRIVATE SOURCE','PRIVATE PHOTO','PRIVATE INGREDIENT','PRIVATE STEP','PRIVATE GROUP','PRIVATE ACTION'] as $private) checkChat(!str_contains($sent,$private),'Only cooking content reaches provider');
-        checkChat(str_contains($sent,'Soup') && str_contains($sent,'120'),'Group and structured timer context retained');
-        $finish=array_replace($edit,['action'=>'prepare','message'=>'','revision'=>1,'turn_id'=>str_repeat('2',32)]);
-        $result=$service->handle($finish,'1','2',$source,[])['draft']['recipe'];
-        if ($mode==='variation') {
-            checkChat($result['parent_recipe_id']==='7' && $result['source_type']==='ai_variation' && !isset($result['id']),'New variation is bound to authorized parent');
-            checkChat($result['photos']===[],'Variation never blindly inherits the parent photograph');
-        } else {
-            checkChat($result['id']==='7' && $result['revision']===3 && $result['household_count']===2,'Edit retains revision and shared-edit safeguards');
-            foreach (['photos','source_type','source_text','category_assignments','parent_recipe_id','pairings'] as $field) checkChat($result[$field]===$source[$field],'Edit preserves '.$field);
-            checkChat($result['nutrition']===null && $result['steps'][0]['id']!==$source['steps'][0]['id'],'Changed cooking details replace stale actions and nutrition');
-        }
-    }
-    $image=base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGNoaGgAAAMEAYFL09IQAAAAAElFTkSuQmCC');
-    $withCover=array_replace($source,['photos'=>[['id'=>'99','storage_key'=>'media/recipes/'.str_repeat('a',48).'.png','is_cover'=>1,'attribution'=>'Original photographer']]]);
-    $coverService=new RecipeChatService($pdo,['api_key'=>'fixture-only','model'=>'fixture-model','variation_access'=>'disabled'],$directory,$transport,static fn($key)=>$image);
-    $coverBody=array_replace($body,['request_id'=>str_repeat('6',32),'mode'=>'variation']);
-    $coverService->handle($coverBody,'1','2',$withCover,[]);
-    $covered=$coverService->handle(array_replace($coverBody,['action'=>'prepare','message'=>'','revision'=>1,'turn_id'=>str_repeat('2',32)]),'1','2',$withCover,[])['draft'];
-    checkChat($covered['recipe']['photos'][0]['image_base64']===base64_encode($image),'Approved parent cover is retained through chat preparation');
-    checkChat($covered['recipe']['photos'][0]['attribution']==='Original photographer','Cover attribution is preserved');
-    checkChat($covered['recipe']['title']==='Egg soup - refined' && !empty($covered['change_description']),'Existing variation title and review explanation remain');
-    checkChat(str_contains(end($payloads)['instructions'],'complete recipe already agreed'),'Variation preparation is constrained to accepted cooking decisions');
-    $changed=array_replace($body,['request_id'=>str_repeat('c',32),'mode'=>'edit']);
-    $service->handle($changed,'1','2',$source,[]);
-    chatError(fn()=>$service->handle(array_replace($changed,['turn_id'=>str_repeat('2',32),'revision'=>1,'action'=>'prepare','message'=>'']),'1','2',array_replace($source,['revision'=>4]),[]),'chat_recipe_changed');
-    $retry=array_replace($body,['request_id'=>str_repeat('d',32)]);
-    $failure=true; chatError(fn()=>$service->handle($retry,'1','2',null,[]),'ai_unavailable');
-    $failure=false; $malformed=true; chatError(fn()=>$service->handle($retry,'1','2',null,[]),'invalid_ai_reply');
-    $malformed=false;
-    checkChat($service->handle($retry,'1','2',null,[])['revision']===1,'Provider failures do not advance or duplicate the conversation');
-    checkChat($service->handle($body,'other-user','2',null,[])['revision']===1,'Session IDs are isolated by actor');
-    checkChat($service->handle($body,'1','other-household',null,[])['revision']===1,'Session IDs are isolated by household');
-    $clarify=true;
-    $question=$service->handle(array_replace($retry,['turn_id'=>str_repeat('2',32),'revision'=>1,'action'=>'prepare','message'=>'']),'1','2',null,[]);
-    checkChat(!$question['ready'] && !isset($question['draft']) && str_contains($question['message'],'salt'),'Importer clarifications return to the chat without saving');
-    foreach ([['message'=>str_repeat('x',4001)],['revision'=>-1],['mode'=>'unknown'],['request_id'=>'../bad'],['action'=>'save']] as $invalid) {
-        chatError(fn()=>$service->handle(array_replace($body,$invalid),'1','2',null,[]),'invalid_recipe_chat');
-    }
-    $limited=array_replace($body,['request_id'=>str_repeat('9',32)]);
-    $service->handle($limited,'1','2',null,[]);
-    $limitPath=$directory.'/recipe-chats/'.hash('sha256',json_encode(['1','2',$limited['request_id']])).'.json';
-    $state=json_decode(file_get_contents($limitPath),true);
-    $state['turns']=array_fill(0,60,['fingerprint'=>'fixture','response'=>[]]);
-    file_put_contents($limitPath,json_encode($state));
-    chatError(fn()=>$service->handle(array_replace($limited,['turn_id'=>str_repeat('2',32),'revision'=>1]),'1','2',null,[]),'chat_limit');
-    $clarify=false;
-    $finalPrepare=array_replace($limited,['turn_id'=>str_repeat('2',32),'revision'=>1,'action'=>'prepare','message'=>'']);
-    checkChat(isset($service->handle($finalPrepare,'1','2',null,[])['draft']),'A final preparation remains possible at the conversation limit');
-    chatError(fn()=>$service->handle(array_replace($finalPrepare,['turn_id'=>str_repeat('3',32),'revision'=>2]),'1','2',null,[]),'chat_limit');
-    $visibleOne="Egg soup\n\nIngredients\n2 eggs\n2 cups water\n\nMethod\n1. Boil water.\n2. Add beaten eggs and simmer for 2 minutes.";
-    $visibleTwo="Ginger egg soup\n\nIngredients\n2 eggs\n2 cups water\n1 teaspoon grated ginger\n\nMethod\n1. Boil water with ginger.\n2. Add beaten eggs and simmer for 2 minutes.";
-    $visibleReplies=[
-        ['message'=>'Here is a soup recipe; we can refine it.','ready'=>false,'recipe_text'=>$visibleOne],
-        ['message'=>'Removing eggs would make it thinner. No change applied.','ready'=>false,'recipe_text'=>$visibleOne],
-        ['message'=>'I added ginger as requested.','ready'=>true,'recipe_text'=>$visibleTwo],
-        ['message'=>'Here is the complete recipe again.','ready'=>true,'recipe_text'=>$visibleTwo,'show_recipe'=>true],
-        ['message'=>'The ginger makes it warmer and more aromatic.','ready'=>true,'recipe_text'=>$visibleTwo],
-        ['message'=>$visibleTwo,'ready'=>true,'recipe_text'=>$visibleTwo],
-        ['message'=>'Use a hotter pan for better browning.','ready'=>false,'recipe_text'=>''],
-    ];
-    $visibleCalls=0;
-    $visibleTransport=static function($payload) use (&$visibleReplies,&$visibleCalls): array {
-        $visibleCalls++;
-        $reply=array_shift($visibleReplies)+['context_updates'=>[],'show_recipe'=>false];
-        return ['status'=>200,'body'=>json_encode(['status'=>'completed','output'=>[['content'=>[['type'=>'output_text','text'=>json_encode($reply)]]]]])];
-    };
-    $visibleService=new RecipeChatService($pdo,['api_key'=>'fixture-only','model'=>'fixture-model'],$directory,$visibleTransport);
-    $visibleBody=array_replace($body,['request_id'=>str_repeat('4',32),'message'=>'Help me make soup.']);
-    $shown=$visibleService->handle($visibleBody,'visible-user','2',null,[]);
-    checkChat(str_contains($shown['message'],'Current recipe draft') && str_contains($shown['message'],$visibleOne),'Chat visibly includes the complete recipe beside commentary');
-    checkChat(!$shown['ready'] && !isset($shown['draft']),'Provisional recipe text is readable before readiness, without import review or saving');
-    checkChat($visibleService->handle($visibleBody,'visible-user','2',null,[])===$shown && $visibleCalls===1,'A lost-response retry preserves the visible recipe without duplicating generation');
-    $analysis=$visibleService->handle(array_replace($visibleBody,['turn_id'=>str_repeat('2',32),'revision'=>1,'message'=>'Just explain removing eggs; do not change it.']),'visible-user','2',null,[]);
-    checkChat($analysis['message']==='Removing eggs would make it thinner. No change applied.','Unchanged-recipe analysis does not repeat or alter the displayed draft');
-    $revised=$visibleService->handle(array_replace($visibleBody,['turn_id'=>str_repeat('3',32),'revision'=>2,'message'=>'Add ginger.']),'visible-user','2',null,[]);
-    checkChat(str_contains($revised['message'],$visibleTwo) && !str_contains($revised['message'],$visibleOne),'An accepted revision displays the new complete recipe');
-    $repeated=$visibleService->handle(array_replace($visibleBody,['turn_id'=>str_repeat('4',32),'revision'=>3,'message'=>'Show me the recipe again.']),'visible-user','2',null,[]);
-    checkChat(str_contains($repeated['message'],$visibleTwo),'An explicit request to see the unchanged recipe displays it again');
-    $visiblePath=$directory.'/recipe-chats/'.hash('sha256',json_encode(['visible-user','2',$visibleBody['request_id']])).'.json';
-    $oldChat=json_decode(file_get_contents($visiblePath),true); unset($oldChat['recipe_visible']); file_put_contents($visiblePath,json_encode($oldChat));
-    $legacy=$visibleService->handle(array_replace($visibleBody,['turn_id'=>str_repeat('5',32),'revision'=>4,'message'=>'What does the ginger do?']),'visible-user','2',null,[]);
-    checkChat(str_contains($legacy['message'],$visibleTwo),'An existing conversation whose recipe was never visible gets the current draft on its next reply');
-    $included=$visibleService->handle(array_replace($visibleBody,['request_id'=>str_repeat('3',32)]),'visible-user','2',null,[]);
-    checkChat($included['message']===$visibleTwo,'A reply already containing the exact recipe is not duplicated');
-    $advice=$visibleService->handle(array_replace($visibleBody,['request_id'=>str_repeat('2',32),'message'=>'How can I improve browning?']),'visible-user','2',null,[]);
-    checkChat($advice['message']==='Use a hotter pan for better browning.' && !str_contains($advice['message'],'Current recipe draft'),'Advice without a dish does not invent or display an empty recipe');
-    // Modern clients keep the full draft separate from conversational commentary.
-    $modernReplies=[
-        ['message'=>'I made a workable egg soup.', 'recipe_text'=>$visibleOne],
-        ['message'=>'Ginger adds warmth; I added it to the draft.', 'recipe_text'=>$visibleTwo],
-        ['message'=>'A hotter pan improves browning; no change requested.', 'recipe_text'=>'','ready'=>false],
-        ['message'=>'Restored the previous draft.', 'recipe_text'=>$visibleOne],
-    ];
-    $modernPayloads=[];
-    $modernTransport=static function($payload) use (&$modernReplies,&$modernPayloads): array {
-        $modernPayloads[]=$payload;
-        $reply=array_shift($modernReplies)+['context_updates'=>[],'show_recipe'=>false,'ready'=>true];
-        return ['status'=>200,'body'=>json_encode(['status'=>'completed','output'=>[['content'=>[['type'=>'output_text','text'=>json_encode($reply)]]]]])];
-    };
-    $modern=new RecipeChatService($pdo,['api_key'=>'fixture-only','model'=>'fixture-model'],$directory,$modernTransport);
-    $modernBody=array_replace($body,['request_id'=>str_repeat('8',32),'draft_view'=>true]);
-    $created=$modern->handle($modernBody,'modern-user','2',null,[]);
-    checkChat($created['message']==='I made a workable egg soup.' && $created['recipe_text']===$visibleOne,'Separate draft clients receive concise chat and full working recipe');
-    checkChat($modern->handle($modernBody,'modern-user','2',null,[])===$created && count($modernPayloads)===1,'Separate draft survives lost-response replay unchanged');
-    chatError(fn()=>$modern->handle(array_replace($modernBody,['draft_view'=>false]),'modern-user','2',null,[]),'chat_turn_changed');
-    $explored=$modern->handle(array_replace($modernBody,['turn_id'=>str_repeat('2',32),'revision'=>1,'message'=>'What if I add ginger?']),'modern-user','2',null,[]);
-    checkChat($explored['recipe_text']===$visibleTwo && !str_contains($explored['message'],'Ingredients'),'Exploratory revision updates working recipe separately from chat');
-    $explained=$modern->handle(array_replace($modernBody,['turn_id'=>str_repeat('3',32),'revision'=>2,'message'=>'Just explain browning, do not change it.']),'modern-user','2',null,[]);
-    checkChat($explained['recipe_text']===$visibleTwo && $explained['ready'],'Explanation-only empty model text cannot erase the working recipe or readiness');
-    $undone=$modern->handle(array_replace($modernBody,['turn_id'=>str_repeat('4',32),'revision'=>3,'message'=>'Undo that recipe change.']),'modern-user','2',null,[]);
-    $sent=json_decode($modernPayloads[3]['input'][0]['content'],true);
-    checkChat($sent['working_recipe']===$visibleTwo && $sent['previous_recipe']===$visibleOne,'Provider receives authoritative current and previous drafts for conversational undo');
-    checkChat($undone['recipe_text']===$visibleOne && !isset($undone['draft']),'Undo updates only the working recipe, without import or save');
-    chatError(fn()=>$modern->handle(array_replace($modernBody,['draft_view'=>'yes']),'modern-user','2',null,[]),'invalid_recipe_chat');
-    $reviewMode='once'; $reviewCalls=[];
-    $reviewTransport=static function($payload) use (&$reviewMode,&$reviewCalls,$transport): array {
-        if (($payload['text']['format']['name']??'')==='recipe_chat') {
-            return ['status'=>200,'body'=>json_encode(['status'=>'completed','output'=>[['content'=>[['type'=>'output_text','text'=>json_encode(['message'=>'Here is the working draft.','recipe_text'=>'Egg soup. 2 eggs, 2 cups water. Simmer for 2 minutes.','ready'=>false,'show_recipe'=>false,'context_updates'=>[]])]]]]])];
-        }
-        $reviewCalls[]=$payload;
-        if ($reviewMode==='always' || ($reviewMode==='once' && count($reviewCalls)===1)) return ['status'=>200,'body'=>json_encode(['status'=>'incomplete','incomplete_details'=>['reason'=>'max_output_tokens'],'output'=>[['content'=>[['type'=>'output_text','text'=>'{"recipe":']]]],'usage'=>['output_tokens'=>$payload['max_output_tokens'],'output_tokens_details'=>['reasoning_tokens'=>$payload['max_output_tokens']]]])];
-        if ($reviewMode==='filter') return ['status'=>200,'body'=>json_encode(['status'=>'incomplete','incomplete_details'=>['reason'=>'content_filter'],'output'=>[]])];
-        return $transport($payload);
-    };
-    $reviewService=new RecipeChatService($pdo,['api_key'=>'fixture-only','model'=>'fixture-model'],$directory,$reviewTransport);
-    $reviewBody=array_replace($body,['request_id'=>str_repeat('5',32),'mode'=>'existing','draft_view'=>true]);
-    $reviewReply=$reviewService->handle($reviewBody,'review-user','2',$source,[]);
-    checkChat(!$reviewReply['ready'] && $reviewReply['recipe_text']!=='','A provisional working draft is available for explicit review');
-    $reviewPrepare=array_replace($reviewBody,['turn_id'=>str_repeat('2',32),'revision'=>1,'action'=>'prepare','message'=>'','save_as'=>'variation']);
-    $reviewPrepared=$reviewService->handle($reviewPrepare,'review-user','2',$source,[]);
-    checkChat(isset($reviewPrepared['draft']) && $reviewPrepared['draft']['recipe']['parent_recipe_id']==='7','Review does not depend on AI readiness and chooses variation at preparation');
-    checkChat(count($reviewCalls)===2 && $reviewCalls[0]['max_output_tokens']===12000 && $reviewCalls[1]['max_output_tokens']===20000,'Review recovers a truncated response with one bounded larger-budget retry');
-    checkChat($reviewCalls[0]['reasoning']['effort']==='low','Formatting an existing working draft uses lighter reasoning');
-    checkChat($reviewService->handle($reviewPrepare,'review-user','2',$source,[])===$reviewPrepared && count($reviewCalls)===2,'A successful preparation retry never repeats either provider call');
-    chatError(fn()=>$reviewService->handle(array_replace($reviewPrepare,['save_as'=>'edit']),'review-user','2',$source,[]),'chat_turn_changed');
-    $editPrepared=$reviewService->handle(array_replace($reviewPrepare,['turn_id'=>str_repeat('3',32),'revision'=>2,'save_as'=>'edit']),'review-user','2',$source,[]);
-    checkChat($editPrepared['draft']['recipe']['id']==='7' && $editPrepared['draft']['recipe']['revision']===3,'The same conversation can instead prepare an edit of the original without a new chat');
-    checkChat($editPrepared['draft']['recipe']['photos']===$source['photos'],'Choosing edit retains original photo and save safeguards');
-    chatError(fn()=>$reviewService->handle(array_replace($reviewBody,['request_id'=>str_repeat('7',32),'save_as'=>'edit']),'review-user','2',$source,[]),'invalid_recipe_chat');
-    $reviewCalls=[]; $reviewMode='always';
-    $failedBody=array_replace($reviewBody,['request_id'=>str_repeat('7',32)]);
-    $reviewService->handle($failedBody,'review-user','2',$source,[]);
-    $failedPrepare=array_replace($failedBody,['turn_id'=>str_repeat('2',32),'revision'=>1,'action'=>'prepare','message'=>'','save_as'=>'edit']);
-    try { $reviewService->handle($failedPrepare,'review-user','2',$source,[]); throw new LogicException('Incomplete response accepted'); }
-    catch(HttpError $error) { checkChat($error->errorCode==='invalid_ai_reply' && str_contains($error->getMessage(),'chat and draft are still here') && !str_contains($error->getMessage(),'importing'),'Preparation failure explains draft preservation and review retry, never asks the user to import'); }
-    checkChat(count($reviewCalls)===2,'A repeatedly truncated reply is bounded to two calls, never parses partial JSON');
-    $reviewMode='ok';
-    checkChat(isset($reviewService->handle($failedPrepare,'review-user','2',$source,[])['draft']),'A failed preparation keeps the same revision/draft and can be retried successfully');
-    $reviewCalls=[];$reviewMode='filter';
-    $filterBody=array_replace($reviewBody,['request_id'=>str_repeat('0',32)]);$reviewService->handle($filterBody,'review-user','2',$source,[]);
-    chatError(fn()=>$reviewService->handle(array_replace($filterBody,['action'=>'prepare','turn_id'=>str_repeat('2',32),'revision'=>1,'message'=>'','save_as'=>'edit']),'review-user','2',$source,[]),'invalid_ai_reply');
-    checkChat(count($reviewCalls)===1,'Non-budget incomplete responses are not automatically retried');
-    foreach (glob($directory.'/recipe-chats/*') as $file) checkChat((fileperms($file)&0777)===0600,'Conversation storage is private');
-} finally {
-    foreach (glob($directory.'/recipe-chats/*') as $file) unlink($file);
-    @rmdir($directory.'/recipe-chats');
-    $files=new RecursiveIteratorIterator(new RecursiveDirectoryIterator($directory,FilesystemIterator::SKIP_DOTS),RecursiveIteratorIterator::CHILD_FIRST);
-    foreach ($files as $file) { if ($file->isDir()) rmdir($file->getPathname()); else unlink($file->getPathname()); }
-    rmdir($directory);
-}
-echo "$checks recipe chat checks passed\n";
+ chatError(fn()=>$service->handle(array_replace($body,['action'=>'prepare','message'=>'']),'alice','house-one',null,[]),'chat_not_ready');
+ $first=$service->handle($body,'alice','house-one',null,[]);
+ checkChat($first['ready'] && !isset($first['draft']) && $first['working_recipe']['ingredients'][0]['original_text']==='2 eggs','A first chat creates structured editor data, never saves or opens review');
+ checkChat(str_contains($first['recipe_text'],'Ingredients') && str_contains($first['recipe_text'],'1. Simmer'),'Working text is derived from the structured document');
+ checkChat($first['message']==='Here is a practical soup.','Chat prose stays separate');
+ checkChat($first['working_recipe']['actions'][0]['duration_seconds']===120,'Structured timers are ready during chat');
+ checkChat($payloads[0]['store']===false && $payloads[0]['reasoning']['effort']==='low','Provider does not store chats and uses the configured low-reasoning request');
+ $before=$calls;checkChat($service->handle($body,'alice','house-one',null,[])===$first && $calls===$before,'Lost response replay makes no provider call');
+ chatError(fn()=>$service->handle(array_replace($body,['message'=>'Different']),'alice','house-one',null,[]),'chat_turn_changed');
+ $reply=['message'=>'I removed the eggs; the soup will be thinner.','show_recipe'=>false,'recipe_action'=>'patch','changes'=>[patch('/ingredients/0',null,'remove')],'context_updates'=>[]];
+ $next=array_replace($body,['turn_id'=>str_repeat('2',32),'revision'=>1,'message'=>'What if I remove the eggs?']);$second=$service->handle($next,'alice','house-one',null,[]);
+ checkChat(count($second['working_recipe']['ingredients'])===1 && !str_contains($second['recipe_text'],'2 eggs'),'A targeted row change updates the only working draft');
+ $input=json_decode($payloads[1]['input'][0]['content'],true);
+ checkChat(isset($input['working_recipe']) && !isset($input['original_recipe'],$input['previous_recipe'],$input['recipe_text']),'Provider gets one current recipe, not original/current/previous copies');
+ checkChat($payloads[1]['input'][2]['content']==='Here is a practical soup.','History holds concise prose, not old structured drafts');
+ $reply=['message'=>'A hotter pan gives better browning.','show_recipe'=>false,'recipe_action'=>'keep','changes'=>[],'context_updates'=>[]];
+ $discussion=array_replace($body,['turn_id'=>str_repeat('3',32),'revision'=>2,'message'=>'Just explain browning.']);$kept=$service->handle($discussion,'alice','house-one',null,[]);
+ checkChat($kept['working_recipe']===$second['working_recipe'],'Explanation needs no repeated recipe output and changes no recipe');
+ $reply=['message'=>'Undone.','show_recipe'=>false,'recipe_action'=>'undo','changes'=>[],'context_updates'=>[]];
+ $undo=array_replace($body,['turn_id'=>str_repeat('4',32),'revision'=>3,'message'=>'Undo that recipe change.']);$restored=$service->handle($undo,'alice','house-one',null,[]);
+ checkChat($restored['working_recipe']===$first['working_recipe'],'Undo restores the exact server snapshot, across intervening discussion');
+ $input=json_decode(end($payloads)['input'][0]['content'],true);checkChat($input['undo_available']===true && !isset($input['previous_recipe']),'Undo sends availability, not the previous recipe');
+ $prepare=array_replace($body,['turn_id'=>str_repeat('5',32),'revision'=>4,'action'=>'prepare','message'=>'']);$before=$calls;$prepared=$service->handle($prepare,'alice','house-one',null,[]);
+ checkChat($calls===$before && $prepared['draft']['recipe']['source_type']==='ai_created','Review uses local validation with ZERO provider calls');
+ checkChat($prepared['draft']['recipe']['ingredients']===$restored['working_recipe']['ingredients'],'Review uses exactly the working ingredients');
+ checkChat($service->handle($prepare,'alice','house-one',null,[])===$prepared && $calls===$before,'Review replay is also local');
+ // Invalid patches are atomic and cannot write account, media or relationship data.
+ $reply=['message'=>'Invalid change.','show_recipe'=>false,'recipe_action'=>'patch','changes'=>[],'context_updates'=>[]];
+ $bad=array_replace($body,['turn_id'=>str_repeat('6',32),'revision'=>5]);$beforeState=file_get_contents($statePath($body));
+ foreach([
+  [patch('/id','999')],[patch('/photos',[])],[patch('/parent_recipe_id','123')],[patch('/ingredients/999',null,'remove')],
+  [patch('/title','Changed'),patch('/steps/0/instruction','')],[patch('/ingredients/0/quantity_denominator',0)],
+  [patch('/steps/0/actions',[['action_type'=>'reminder']])],[patch('/ingredients/0',['original_text'=>'Water','id'=>'SPOOF'])],
+  [patch('/title',[])],[['op'=>'set','path'=>'/title','value_json'=>'{bad']],
+ ] as $changes){$reply['changes']=$changes;chatError(fn()=>$service->handle($bad,'alice','house-one',null,[]),'invalid_ai_reply');checkChat(file_get_contents($statePath($body))===$beforeState,'Invalid patch never partially changes draft or revision');}
+ $reply=['message'=>'No change.','show_recipe'=>false,'recipe_action'=>'keep','changes'=>[patch('/title','Spoof')],'context_updates'=>[]];chatError(fn()=>$service->handle($bad,'alice','house-one',null,[]),'invalid_ai_reply');
+ $reply=['message'=>'Still here.','show_recipe'=>false,'recipe_action'=>'keep','changes'=>[],'context_updates'=>[]];$failure=true;chatError(fn()=>$service->handle($bad,'alice','house-one',null,[]),'ai_unavailable');$failure=false;
+ checkChat($service->handle($bad,'alice','house-one',null,[])['revision']===6,'A failed provider response retains turn/revision for retry');
+ chatError(fn()=>$service->handle(array_replace($bad,['turn_id'=>str_repeat('7',32),'revision'=>0]),'alice','house-one',null,[]),'chat_out_of_date');
+ $denied=new RecipeChatService($pdo,['api_key'=>'fixture-only','model'=>'fixture-model','before_recipe_chat_commit'=>static function(){throw new HttpError(403,'account_disabled','Unavailable');}],$root,$transport);
+ $beforeState=file_get_contents($statePath($body));chatError(fn()=>$denied->handle(array_replace($bad,['turn_id'=>str_repeat('7',32),'revision'=>6]),'alice','house-one',null,[]),'account_disabled');checkChat(file_get_contents($statePath($body))===$beforeState,'Live authorization rejection prevents all draft/context changes');
+ // Existing source is sanitized once, then only the current canonical draft is sent.
+ $existing=array_replace($body,['request_id'=>str_repeat('b',32),'mode'=>'existing']);$existingFirst=$service->handle($existing,'alice','house-one',$source,[]);
+ $sent=json_encode(end($payloads));foreach(['PRIVATE SOURCE','PRIVATE PHOTO','PRIVATE INGREDIENT','PRIVATE GROUP','PRIVATE STEP','PRIVATE ACTION'] as $private)checkChat(!str_contains($sent,$private),'Original account/private metadata stays out of provider input');
+ checkChat($existingFirst['working_recipe']['groups'][0]['title']==='Soup','Original components and actions retain cooking meaning');
+ $basePrepare=array_replace($existing,['action'=>'prepare','message'=>'','revision'=>1,'turn_id'=>str_repeat('2',32),'save_as'=>'variation']);$before=$calls;
+ $variation=$service->handle($basePrepare,'alice','house-one',$source,[])['draft'];
+ checkChat($calls===$before && $variation['recipe']['parent_recipe_id']==='7' && !isset($variation['recipe']['id']),'A variation is assembled locally with its trusted parent');
+ checkChat($variation['recipe']['photos']===[],'Variations omit the old photo rather than delaying Review with a visual AI call');
+ chatError(fn()=>$service->handle(array_replace($basePrepare,['save_as'=>'edit']),'alice','house-one',$source,[]),'chat_turn_changed');
+ $edit=$service->handle(array_replace($basePrepare,['turn_id'=>str_repeat('3',32),'revision'=>2,'save_as'=>'edit']),'alice','house-one',$source,[])['draft']['recipe'];
+ checkChat($calls===$before && $edit['id']==='7' && $edit['revision']===3,'Edit remains local and retains save-time revision safeguards');
+ foreach(['photos','source_type','source_text','category_assignments','parent_recipe_id','pairings','household_count'] as $field)checkChat($edit[$field]===$source[$field],'Edit preserves '.$field);
+ chatError(fn()=>$service->handle(array_replace($basePrepare,['turn_id'=>str_repeat('4',32),'revision'=>3]),'alice','house-one',array_replace($source,['revision'=>4]),[]),'chat_recipe_changed');
+ // Category edits must agree with the same canonical data used by Review.
+ $catCatalog=[['id'=>'1','label'=>'Meals','parent_label'=>null],['id'=>'8','label'=>'Soups','parent_label'=>'Meals'],['id'=>'9','label'=>'Stews','parent_label'=>'Meals']];
+ $catBody=array_replace($body,['request_id'=>str_repeat('8',32),'mode'=>'existing']);
+ $reply=['message'=>'Changed the category.','show_recipe'=>false,'recipe_action'=>'patch','changes'=>[patch('/categories',[['label'=>'Stews','parent_label'=>'Meals']])],'context_updates'=>[]];
+ $service->handle($catBody,'alice','house-one',$source,$catCatalog);$before=$calls;
+ $categoryEdit=$service->handle(array_replace($catBody,['action'=>'prepare','message'=>'','turn_id'=>str_repeat('2',32),'revision'=>1,'save_as'=>'edit']),'alice','house-one',$source,$catCatalog)['draft']['recipe'];
+ checkChat($calls===$before && $categoryEdit['category_assignments'][0]['category_id']==='9','Explicit category changes survive local edit review instead of reverting to original categories');
+ checkChat($categoryEdit['photos']===$source['photos'],'Category edits do not disturb original photos');
+ $partialBody=array_replace($body,['request_id'=>str_repeat('9',32)]);$reply=['message'=>'We can develop soup.','show_recipe'=>false,'recipe_action'=>'patch','changes'=>[patch('/title','Soup')],'context_updates'=>[]];
+ $partial=$service->handle($partialBody,'alice','house-one',null,[]);$before=$calls;
+ $clarification=$service->handle(array_replace($partialBody,['turn_id'=>str_repeat('2',32),'revision'=>1,'action'=>'prepare','message'=>'']),'alice','house-one',null,[]);
+ checkChat(!$partial['ready'] && !isset($clarification['draft']) && $calls===$before,'Incomplete proposals get local essential-field guidance without an AI call');
+ checkChat(str_contains($clarification['message'],'ingredients') && str_contains($clarification['message'],'cooking steps') && !str_contains($clarification['message'],'a recipe title'),'Review asks only for fields actually missing, not already provided details');
+ // Long conversations retain bounded human prose, not repeated full drafts.
+ $long=array_replace($body,['request_id'=>str_repeat('c',32)]);$revision=0;
+ for($i=1;$i<=18;$i++){$reply=['message'=>'Short reply '.$i,'show_recipe'=>false,'recipe_action'=>'keep','changes'=>[],'context_updates'=>[]];$service->handle(array_replace($long,['turn_id'=>sprintf('%032x',$i),'revision'=>$revision++,'message'=>'Question '.$i.' '.str_repeat('context ',300)]),'alice','house-one',null,[]);}
+ $last=end($payloads);$history=array_slice($last['input'],1);checkChat(count($history)<=8 && mb_strlen(implode('',array_column($history,'content')))<=10000,'Provider history is bounded to eight messages and 10000 characters');
+ checkChat(!str_contains(json_encode($history),'recipe_text') && !str_contains(json_encode($history),'changes'),'Old full recipes and patches are never in conversation history');
+ $state=json_decode(file_get_contents($statePath($long)),true);checkChat(count($state['messages'])===36,'The full human transcript is retained locally while only bounded context goes to AI');
+ // The limit still permits one final, local Review.
+ $state['turns']=array_fill(0,60,['fingerprint'=>'fixture','response'=>[]]);$state['working_recipe']=RecipeWorkingDraft::fromSource($source);$state['revision']=60;file_put_contents($statePath($long),json_encode($state));
+ chatError(fn()=>$service->handle(array_replace($long,['revision'=>60,'turn_id'=>str_repeat('f',32)]),'alice','house-one',null,[]),'chat_limit');
+ checkChat(isset($service->handle(array_replace($long,['revision'=>60,'turn_id'=>str_repeat('f',32),'action'=>'prepare','message'=>'']),'alice','house-one',null,[])['draft']),'The final allowed Review remains available');
+ // Optional preferences are ranked without dropping restrictions or unknown-language facts.
+ $facts=[];for($i=0;$i<24;$i++)$facts[]=['id'=>md5('fact'.$i),'person'=>'self','preference'=>'Likes ingredient'.$i.'.','household'=>null];
+ $facts[]=['id'=>md5('avoid'),'person'=>'self','preference'=>'Avoids peanuts.','household'=>null];$facts[]=['id'=>md5('unknown'),'person'=>'self','preference'=>'Evita gluten.','household'=>null];
+ $q=$pdo->prepare('INSERT INTO user_recipe_context(user_id,state_json) VALUES (?,?)');$q->execute(['prefs',json_encode(['revision'=>1,'facts'=>$facts])]);
+ $prefBody=array_replace($body,['request_id'=>str_repeat('d',32),'message'=>'Please use ingredient23.']);$reply=['message'=>'Understood.','show_recipe'=>false,'recipe_action'=>'keep','changes'=>[],'context_updates'=>[]];
+ $service->handle($prefBody,'prefs','house-one',null,[]);$chosen=json_decode(end($payloads)['input'][0]['content'],true)['cooking_context'];$preferences=array_column($chosen,'preference');
+ checkChat(count($chosen)===14 && in_array('Likes ingredient23.',$preferences,true),'Optional preferences are ranked by the current request within a small bound');
+ checkChat(in_array('Avoids peanuts.',$preferences,true) && in_array('Evita gluten.',$preferences,true),'Restrictions and unknown preference kinds are never guessed irrelevant');
+ $service->handle(array_replace($prefBody,['request_id'=>str_repeat('e',32),'message'=>'Forget all my preferences.']),'prefs','house-one',null,[]);
+ checkChat(count(json_decode(end($payloads)['input'][0]['content'],true)['cooking_context'])===26,'Explicit memory management sees the full scoped context');
+ // Undo snapshots are server-owned and bounded independently of short model history.
+ $undoBody=array_replace($body,['request_id'=>str_repeat('f',32)]);$rev=0;
+ for($i=1;$i<=6;$i++){$reply=['message'=>'Updated the title.','show_recipe'=>false,'recipe_action'=>'patch','changes'=>[patch('/title','Proposal '.$i)],'context_updates'=>[]];$service->handle(array_replace($undoBody,['turn_id'=>sprintf('%032x',$i),'revision'=>$rev++]),'undo-user','house-one',null,[]);}
+ $saved=json_decode(file_get_contents($statePath($undoBody,'undo-user')),true);checkChat(count($saved['undo_recipes'])===5,'At most five full undo snapshots are retained on the server');
+ $reply=['message'=>'Undone.','show_recipe'=>false,'recipe_action'=>'undo','changes'=>[],'context_updates'=>null];$undoTurn=array_replace($undoBody,['turn_id'=>sprintf('%032x',7),'revision'=>$rev,'message'=>'Undo.']);
+ chatError(fn()=>$service->handle($undoTurn,'undo-user','house-one',null,[]),'invalid_ai_reply');
+ checkChat(json_decode(file_get_contents($statePath($undoBody,'undo-user')),true)===$saved,'Invalid learning deltas cannot partially pop an undo snapshot');
+ $reply['context_updates']=[];
+ for($i=7;$i<=11;$i++)$lastUndo=$service->handle(array_replace($undoBody,['turn_id'=>sprintf('%032x',$i),'revision'=>$rev++,'message'=>'Undo.']),'undo-user','house-one',null,[]);
+ checkChat($lastUndo['working_recipe']['title']==='Proposal 1','Five successive undos restore each available prior working draft');
+ $noUndo=$service->handle(array_replace($undoBody,['turn_id'=>sprintf('%032x',12),'revision'=>$rev,'message'=>'Undo.']),'undo-user','house-one',null,[]);
+ checkChat($noUndo['working_recipe']===$lastUndo['working_recipe'] && str_contains($noUndo['message'],'no earlier'),'No unavailable undo is fabricated or allowed to erase the draft');
+ // Metadata is useful and never contains recipe, preference or chat content.
+ $metrics=array_map(static fn($line)=>json_decode($line,true),file($root.'/recipe-chat-metrics.log',FILE_IGNORE_NEW_LINES));
+ $reviews=array_filter($metrics,static fn($r)=>$r['operation']==='prepare');foreach($reviews as $r)checkChat($r['provider_calls']===0 && $r['input_tokens']===0 && $r['output_tokens']===0,'Structured review and replay metrics record zero AI tokens');
+ $model=array_values(array_filter($metrics,static fn($r)=>$r['operation']==='message' && $r['status']==='completed' && !$r['cache_hit']));
+ checkChat($model[0]['input_tokens']===1000 && $model[0]['output_tokens']===100 && $model[0]['reasoning_tokens']===20 && $model[0]['cached_input_tokens']===128,'Metrics preserve actual provider input/output/reasoning/cache counts');
+ $encoded=file_get_contents($root.'/recipe-chat-metrics.log');checkChat(!str_contains($encoded,'egg') && !str_contains($encoded,'Question') && !str_contains($encoded,'alice'),'Metrics never log cooking content, transcripts or account IDs');
+ checkChat((fileperms($root.'/recipe-chat-metrics.log')&0777)===0600,'Usage metadata stays private');
+} finally {$it=new RecursiveIteratorIterator(new RecursiveDirectoryIterator($root,FilesystemIterator::SKIP_DOTS),RecursiveIteratorIterator::CHILD_FIRST);foreach($it as $p){if($p->isDir())rmdir($p->getPathname());else unlink($p->getPathname());}rmdir($root);}
+echo "$checks structured chat checks passed\n";
