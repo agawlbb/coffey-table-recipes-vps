@@ -68,7 +68,7 @@ final class DataSocket
         $root='/households/'.$household;
         if (!str_starts_with($route,$root.'/')) throw new HttpError(404,'not_found','Household endpoint not found.');
         $part=substr($route,strlen($root));
-        if (preg_match('#^/shopping-list(?:/sync-request)?$#D',$part)) return $this->shopping->handle($token,$household,$route,$body);
+        if (preg_match('#^/shopping-list(?:/sync-request|/photos(?:/[a-f0-9]{64})?)?$#D',$part)) return $this->shopping->handle($token,$household,$route,$body);
         if ($part==='/snapshot' && $body===null) {
             $snapshot=$this->snapshot($actor)['library'];
             return ($query['version']??'')===$snapshot['version'] ? ['schema'=>1,'household_id'=>$household,'version'=>$snapshot['version'],'unchanged'=>true] : $snapshot;

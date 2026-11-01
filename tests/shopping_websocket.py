@@ -73,6 +73,28 @@ class ShoppingWireTests(unittest.IsolatedAsyncioTestCase):
         await ws.send_json({"v": 1, "type": "auth", "token": token, "household_id": household})
         return await self.message(ws)
 
+    async def test_photo_upload_read_and_small_list_snapshot(self):
+        import base64
+        ready = await self.authenticate(self.app)
+        self.assertEqual(ready["type"], "ready")
+        # Use PHP GD to produce a known valid PNG fixture.
+        png = subprocess.check_output(["php", "-r", "$i=imagecreatetruecolor(3,2);ob_start();imagepng($i);echo base64_encode(ob_get_clean());"], text=True)
+        root = "/households/1/shopping-list"
+        await self.app.send_json(dict(v=1, type="request", id="upload", path=root+"/photos", body={"image_base64": png}))
+        uploaded = await self.message(self.app)
+        photo = uploaded["data"]["photo"]
+        self.assertEqual(len(photo), 64)
+        await self.app.send_json(dict(v=1, type="request", id="read", path=root+"/photos/"+photo))
+        view = await self.message(self.app)
+        self.assertTrue(base64.b64decode(view["data"]["image_base64"]).startswith(b"\xff\xd8"))
+        item = dict(id="milk", name="Milk", checked=False, department="", photo=photo)
+        await self.app.send_json(dict(v=1, type="request", id="save-photo", path=root, body={"revision": 0, "items": [item]}))
+        saved = await self.message(self.app)
+        self.assertEqual(saved["data"]["items"], [item])
+        pushed = await self.message(self.app)
+        self.assertNotIn("image_base64", json.dumps(pushed))
+        self.assertLess(len(json.dumps(pushed)), 4096)
+
     async def test_app_ha_push_receipt_replay_and_revocation(self):
         import time
         self.assertEqual((await self.authenticate(self.app))["type"], "ready")

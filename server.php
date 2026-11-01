@@ -140,7 +140,7 @@ $worker->onMessage = static function (TcpConnection $c, string $text) use (&$cli
             if ($entry['scope']==='ai') throw new HttpError(404,'not_found','AI endpoint not found.');
             $data=$service->handle($entry['token'], $entry['household'], $m['path'], $body, $entry['scope']);
             $send($c, ['type'=>'response','id'=>$id,'data'=>$data]);
-            if ($body !== null) {
+            if ($body !== null && !str_contains($m['path'], '/shopping-list/photos')) {
                 $broadcast($entry);
                 $scheduleImages($entry,$data);
             }
