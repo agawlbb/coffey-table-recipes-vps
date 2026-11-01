@@ -5,6 +5,7 @@ require dirname(__DIR__).'/src/RecipeImportService.php';
 require dirname(__DIR__).'/src/RecipeChatService.php';
 require dirname(__DIR__).'/src/RecipeVariationService.php';
 
+require __DIR__.'/fixtures/context_database.php';
 $checks=0;
 function checkChat(bool $ok,string $message): void { global $checks; if (!$ok) throw new RuntimeException($message); $checks++; }
 function chatError(callable $run,string $code): void {
@@ -12,6 +13,7 @@ function chatError(callable $run,string $code): void {
     throw new RuntimeException('Expected '.$code);
 }
 $directory=sys_get_temp_dir().'/ctr-chat-'.bin2hex(random_bytes(6)); mkdir($directory,0700);
+$pdo=contextTestDatabase($directory.'/context.sqlite');
 $payloads=[]; $failure=false; $malformed=false; $clarify=false;
 $transport=static function(array $payload) use (&$payloads,&$failure,&$malformed,&$clarify): array {
     $payloads[]=$payload;
@@ -27,7 +29,7 @@ $transport=static function(array $payload) use (&$payloads,&$failure,&$malformed
         'questions'=>$clarify?['How much salt?']:[]];
     return ['status'=>200,'body'=>json_encode(['status'=>'completed','output'=>[['content'=>[['type'=>'output_text','text'=>json_encode($result)]]]]])];
 };
-$service=new RecipeChatService(['api_key'=>'fixture-only','model'=>'fixture-model'],$directory,$transport);
+$service=new RecipeChatService($pdo,['api_key'=>'fixture-only','model'=>'fixture-model'],$directory,$transport);
 $body=['request_id'=>str_repeat('a',32),'turn_id'=>str_repeat('1',32),'mode'=>'create','action'=>'message','message'=>'Create egg soup','revision'=>0];
 $source=['id'=>'7','title'=>'Egg soup','revision'=>3,'household_id'=>'PRIVATE HOUSEHOLD','created_by_user_id'=>'PRIVATE USER','source_text'=>'PRIVATE SOURCE',
     'source_type'=>'ai_text','parent_recipe_id'=>'4','household_count'=>2,'category_assignments'=>[['category_id'=>'8']],
@@ -44,7 +46,7 @@ try {
         chatError(fn()=>$concurrent->handle($concurrentBody,'1','2',null,[]),'chat_in_progress');
         return $transport($payload);
     };
-    $concurrent=new RecipeChatService(['api_key'=>'fixture-only','model'=>'fixture-model'],$directory,$concurrentTransport);
+    $concurrent=new RecipeChatService($pdo,['api_key'=>'fixture-only','model'=>'fixture-model'],$directory,$concurrentTransport);
     $completed=$concurrent->handle($concurrentBody,'1','2',null,[]);
     checkChat($concurrent->handle($concurrentBody,'1','2',null,[])===$completed && $concurrentCalls===1,'Concurrent/recovered requests never duplicate provider work');
     $payloads=[];
@@ -86,7 +88,7 @@ try {
     }
     $image=base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGNoaGgAAAMEAYFL09IQAAAAAElFTkSuQmCC');
     $withCover=array_replace($source,['photos'=>[['id'=>'99','storage_key'=>'media/recipes/'.str_repeat('a',48).'.png','is_cover'=>1,'attribution'=>'Original photographer']]]);
-    $coverService=new RecipeChatService(['api_key'=>'fixture-only','model'=>'fixture-model','variation_access'=>'disabled'],$directory,$transport,static fn($key)=>$image);
+    $coverService=new RecipeChatService($pdo,['api_key'=>'fixture-only','model'=>'fixture-model','variation_access'=>'disabled'],$directory,$transport,static fn($key)=>$image);
     $coverBody=array_replace($body,['request_id'=>str_repeat('6',32),'mode'=>'variation']);
     $coverService->handle($coverBody,'1','2',$withCover,[]);
     $covered=$coverService->handle(array_replace($coverBody,['action'=>'prepare','message'=>'','revision'=>1,'turn_id'=>str_repeat('2',32)]),'1','2',$withCover,[])['draft'];
@@ -138,7 +140,7 @@ try {
         $reply=array_shift($visibleReplies)+['context_updates'=>[],'show_recipe'=>false];
         return ['status'=>200,'body'=>json_encode(['status'=>'completed','output'=>[['content'=>[['type'=>'output_text','text'=>json_encode($reply)]]]]])];
     };
-    $visibleService=new RecipeChatService(['api_key'=>'fixture-only','model'=>'fixture-model'],$directory,$visibleTransport);
+    $visibleService=new RecipeChatService($pdo,['api_key'=>'fixture-only','model'=>'fixture-model'],$directory,$visibleTransport);
     $visibleBody=array_replace($body,['request_id'=>str_repeat('4',32),'message'=>'Help me make soup.']);
     $shown=$visibleService->handle($visibleBody,'visible-user','2',null,[]);
     checkChat(str_contains($shown['message'],'Current recipe draft') && str_contains($shown['message'],$visibleOne),'Chat visibly includes the complete recipe beside commentary');
@@ -171,7 +173,7 @@ try {
         $reply=array_shift($modernReplies)+['context_updates'=>[],'show_recipe'=>false,'ready'=>true];
         return ['status'=>200,'body'=>json_encode(['status'=>'completed','output'=>[['content'=>[['type'=>'output_text','text'=>json_encode($reply)]]]]])];
     };
-    $modern=new RecipeChatService(['api_key'=>'fixture-only','model'=>'fixture-model'],$directory,$modernTransport);
+    $modern=new RecipeChatService($pdo,['api_key'=>'fixture-only','model'=>'fixture-model'],$directory,$modernTransport);
     $modernBody=array_replace($body,['request_id'=>str_repeat('8',32),'draft_view'=>true]);
     $created=$modern->handle($modernBody,'modern-user','2',null,[]);
     checkChat($created['message']==='I made a workable egg soup.' && $created['recipe_text']===$visibleOne,'Separate draft clients receive concise chat and full working recipe');

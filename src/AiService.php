@@ -60,7 +60,7 @@ final class AiService {
                 if (!is_string($id) || !preg_match('/^[1-9][0-9]{0,18}$/D',$id)) throw new HttpError(422,'invalid_recipe','Choose a recipe.');
                 $source=$recipes->detail($user,$household,$id);
             }
-            $chat=(new RecipeChatService($config,$this->storage,$this->transport))->handle($body,$user,$household,$source,$options['categories']);
+            $chat=(new RecipeChatService($this->pdo,$config,$this->storage,$this->transport))->handle($body,$user,$household,$source,$options['categories']);
             if (isset($chat['draft'])) $chat['draft']['recipe']['edit_options']=$options;
             return $chat;
         }

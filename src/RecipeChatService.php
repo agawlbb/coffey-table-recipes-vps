@@ -5,7 +5,7 @@ require_once __DIR__.'/RecipeUserContext.php';
 /** Private conversation drafts only. The ordinary recipe editor remains the save path. */
 final class RecipeChatService
 {
-    public function __construct(private array $config, private string $storage, private $transport = null, private $coverReader = null) {}
+    public function __construct(private PDO $pdo, private array $config, private string $storage, private $transport = null, private $coverReader = null) {}
 
     private static function cookingSource(array $source): array {
         $result=array_intersect_key($source,array_flip(['title','description','original_language','measurement_system','yield_text','servings','prep_minutes','cook_minutes','total_minutes','notes']));
@@ -101,7 +101,7 @@ PROMPT;
         $context=null;
         try {
             if (!flock($lock,LOCK_EX|LOCK_NB)) throw new HttpError(409,'chat_in_progress','AI is still working on this conversation. Please try again shortly.');
-            $context=new RecipeUserContext($this->storage,$user);
+            $context=new RecipeUserContext($this->pdo,$this->storage,$user);
             $stored=is_file($path)?json_decode(file_get_contents($path),true,128,JSON_THROW_ON_ERROR):[
                 'binding'=>$binding,'revision'=>0,'messages'=>[],'turns'=>[],
                 'source_hash'=>$source===null?null:hash('sha256',json_encode([$source['revision']??null,self::cookingSource($source)],JSON_THROW_ON_ERROR)),

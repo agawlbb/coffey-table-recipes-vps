@@ -214,8 +214,10 @@ class AiWireTests(unittest.IsolatedAsyncioTestCase):
             db.execute('DELETE FROM household_memberships WHERE user_id=1 AND household_id=1')
         denied, _ = await self.result()
         self.assertEqual(denied['status'], 404, denied)
-        profile = Path(self.runtime) / 'state' / 'recipe-user-context' / (hashlib.sha256(b'1').hexdigest() + '.json')
-        self.assertFalse(profile.exists(), 'Revoked requests must not durably learn preferences')
+        with closing(sqlite3.connect(self.database)) as db:
+            row = db.execute('SELECT state_json FROM user_recipe_context WHERE user_id=1').fetchone()
+            self.assertEqual(__import__('json').loads(row[0])['facts'], [], 'Revoked requests must not durably learn preferences')
+        self.assertFalse((Path(self.runtime) / 'state' / 'recipe-user-context').exists())
 
     async def test_household_admin_and_image_permissions(self):
         await self.auth(self.app, scope='ai')

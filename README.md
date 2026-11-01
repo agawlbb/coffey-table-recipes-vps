@@ -22,6 +22,14 @@ Child mode hides editing controls in the app. Shopping writes do not make a
 server-side child-mode policy call. Firebase authentication and household access
 checks remain enforced by this service.
 
+## Cooking context storage
+
+Learned per-user cooking preferences use the private VPS database table
+`user_recipe_context`. Temporary chat transcripts remain file caches. See
+[database context migration and validation](DATABASE-CHAT-CONTEXT.md) for the
+one-time import, privacy rules and preserved file backups. This supersedes the
+historical file-storage descriptions below.
+
 ## Deployment
 
 On the VPS, from this checkout:
