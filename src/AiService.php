@@ -55,7 +55,7 @@ final class AiService {
         if ($part==='recipe-chat') {
             $mode=$body['mode']??null;
             $source=null;
-            if (in_array($mode,['variation','edit'],true)) {
+            if (in_array($mode,['variation','edit','existing'],true)) {
                 $id=$body['recipe_id']??null;
                 if (!is_string($id) || !preg_match('/^[1-9][0-9]{0,18}$/D',$id)) throw new HttpError(422,'invalid_recipe','Choose a recipe.');
                 $source=$recipes->detail($user,$household,$id);

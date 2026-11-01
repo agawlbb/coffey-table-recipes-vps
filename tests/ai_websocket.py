@@ -86,6 +86,27 @@ class AiWireTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(prepared['data']['recipe_text'], data['recipe_text'])
         self.assertIn('draft', prepared['data'])
 
+    async def test_review_selects_variation_or_edit_after_chat(self):
+        await self.auth(self.app, scope='ai')
+        body = dict(request_id='9' * 32, turn_id='1' * 32, revision=0,
+                    mode='existing', recipe_id='1', action='message', message='Improve soup.', draft_view=True)
+        await self.send_ai('/households/1/recipe-chat', body)
+        reply, _ = await self.result()
+        self.assertEqual(reply['type'], 'response', reply)
+        self.assertNotIn('draft', reply['data'])
+        await self.send_ai('/households/1/recipe-chat', {**body, 'turn_id': '2' * 32,
+                           'revision': 1, 'message': '', 'action': 'prepare', 'save_as': 'variation'})
+        variation, _ = await self.result()
+        self.assertEqual(variation['type'], 'response', variation)
+        self.assertEqual(variation['data']['draft']['recipe']['parent_recipe_id'], '1')
+        await self.send_ai('/households/1/recipe-chat', {**body, 'turn_id': '3' * 32,
+                           'revision': 2, 'message': '', 'action': 'prepare', 'save_as': 'edit'})
+        edit, _ = await self.result()
+        self.assertEqual(edit['type'], 'response', edit)
+        self.assertEqual(str(edit['data']['draft']['recipe']['id']), '1')
+        with closing(sqlite3.connect(self.database)) as db:
+            self.assertEqual(db.execute('SELECT title,revision FROM recipes WHERE id=1').fetchone(), ('Soup', 2))
+
     async def test_recipe_chat_all_households_and_prepare_without_saving(self):
         with closing(sqlite3.connect(self.database)) as db, db:
             db.execute('UPDATE households SET ai_images_enabled=0 WHERE id=1')

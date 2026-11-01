@@ -188,6 +188,44 @@ try {
     checkChat($sent['working_recipe']===$visibleTwo && $sent['previous_recipe']===$visibleOne,'Provider receives authoritative current and previous drafts for conversational undo');
     checkChat($undone['recipe_text']===$visibleOne && !isset($undone['draft']),'Undo updates only the working recipe, without import or save');
     chatError(fn()=>$modern->handle(array_replace($modernBody,['draft_view'=>'yes']),'modern-user','2',null,[]),'invalid_recipe_chat');
+    $reviewMode='once'; $reviewCalls=[];
+    $reviewTransport=static function($payload) use (&$reviewMode,&$reviewCalls,$transport): array {
+        if (($payload['text']['format']['name']??'')==='recipe_chat') {
+            return ['status'=>200,'body'=>json_encode(['status'=>'completed','output'=>[['content'=>[['type'=>'output_text','text'=>json_encode(['message'=>'Here is the working draft.','recipe_text'=>'Egg soup. 2 eggs, 2 cups water. Simmer for 2 minutes.','ready'=>false,'show_recipe'=>false,'context_updates'=>[]])]]]]])];
+        }
+        $reviewCalls[]=$payload;
+        if ($reviewMode==='always' || ($reviewMode==='once' && count($reviewCalls)===1)) return ['status'=>200,'body'=>json_encode(['status'=>'incomplete','incomplete_details'=>['reason'=>'max_output_tokens'],'output'=>[['content'=>[['type'=>'output_text','text'=>'{"recipe":']]]],'usage'=>['output_tokens'=>$payload['max_output_tokens'],'output_tokens_details'=>['reasoning_tokens'=>$payload['max_output_tokens']]]])];
+        if ($reviewMode==='filter') return ['status'=>200,'body'=>json_encode(['status'=>'incomplete','incomplete_details'=>['reason'=>'content_filter'],'output'=>[]])];
+        return $transport($payload);
+    };
+    $reviewService=new RecipeChatService($pdo,['api_key'=>'fixture-only','model'=>'fixture-model'],$directory,$reviewTransport);
+    $reviewBody=array_replace($body,['request_id'=>str_repeat('5',32),'mode'=>'existing','draft_view'=>true]);
+    $reviewReply=$reviewService->handle($reviewBody,'review-user','2',$source,[]);
+    checkChat(!$reviewReply['ready'] && $reviewReply['recipe_text']!=='','A provisional working draft is available for explicit review');
+    $reviewPrepare=array_replace($reviewBody,['turn_id'=>str_repeat('2',32),'revision'=>1,'action'=>'prepare','message'=>'','save_as'=>'variation']);
+    $reviewPrepared=$reviewService->handle($reviewPrepare,'review-user','2',$source,[]);
+    checkChat(isset($reviewPrepared['draft']) && $reviewPrepared['draft']['recipe']['parent_recipe_id']==='7','Review does not depend on AI readiness and chooses variation at preparation');
+    checkChat(count($reviewCalls)===2 && $reviewCalls[0]['max_output_tokens']===12000 && $reviewCalls[1]['max_output_tokens']===20000,'Review recovers a truncated response with one bounded larger-budget retry');
+    checkChat($reviewCalls[0]['reasoning']['effort']==='low','Formatting an existing working draft uses lighter reasoning');
+    checkChat($reviewService->handle($reviewPrepare,'review-user','2',$source,[])===$reviewPrepared && count($reviewCalls)===2,'A successful preparation retry never repeats either provider call');
+    chatError(fn()=>$reviewService->handle(array_replace($reviewPrepare,['save_as'=>'edit']),'review-user','2',$source,[]),'chat_turn_changed');
+    $editPrepared=$reviewService->handle(array_replace($reviewPrepare,['turn_id'=>str_repeat('3',32),'revision'=>2,'save_as'=>'edit']),'review-user','2',$source,[]);
+    checkChat($editPrepared['draft']['recipe']['id']==='7' && $editPrepared['draft']['recipe']['revision']===3,'The same conversation can instead prepare an edit of the original without a new chat');
+    checkChat($editPrepared['draft']['recipe']['photos']===$source['photos'],'Choosing edit retains original photo and save safeguards');
+    chatError(fn()=>$reviewService->handle(array_replace($reviewBody,['request_id'=>str_repeat('7',32),'save_as'=>'edit']),'review-user','2',$source,[]),'invalid_recipe_chat');
+    $reviewCalls=[]; $reviewMode='always';
+    $failedBody=array_replace($reviewBody,['request_id'=>str_repeat('7',32)]);
+    $reviewService->handle($failedBody,'review-user','2',$source,[]);
+    $failedPrepare=array_replace($failedBody,['turn_id'=>str_repeat('2',32),'revision'=>1,'action'=>'prepare','message'=>'','save_as'=>'edit']);
+    try { $reviewService->handle($failedPrepare,'review-user','2',$source,[]); throw new LogicException('Incomplete response accepted'); }
+    catch(HttpError $error) { checkChat($error->errorCode==='invalid_ai_reply' && str_contains($error->getMessage(),'chat and draft are still here') && !str_contains($error->getMessage(),'importing'),'Preparation failure explains draft preservation and review retry, never asks the user to import'); }
+    checkChat(count($reviewCalls)===2,'A repeatedly truncated reply is bounded to two calls, never parses partial JSON');
+    $reviewMode='ok';
+    checkChat(isset($reviewService->handle($failedPrepare,'review-user','2',$source,[])['draft']),'A failed preparation keeps the same revision/draft and can be retried successfully');
+    $reviewCalls=[];$reviewMode='filter';
+    $filterBody=array_replace($reviewBody,['request_id'=>str_repeat('0',32)]);$reviewService->handle($filterBody,'review-user','2',$source,[]);
+    chatError(fn()=>$reviewService->handle(array_replace($filterBody,['action'=>'prepare','turn_id'=>str_repeat('2',32),'revision'=>1,'message'=>'','save_as'=>'edit']),'review-user','2',$source,[]),'invalid_ai_reply');
+    checkChat(count($reviewCalls)===1,'Non-budget incomplete responses are not automatically retried');
     foreach (glob($directory.'/recipe-chats/*') as $file) checkChat((fileperms($file)&0777)===0600,'Conversation storage is private');
 } finally {
     foreach (glob($directory.'/recipe-chats/*') as $file) unlink($file);
