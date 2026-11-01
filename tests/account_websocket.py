@@ -77,6 +77,17 @@ class AccountWireTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((await self.request(self.app, '/me'))['data']['user']['display_name'], 'Lex')
         self.assertEqual((await self.request(self.app, '/me/name', dict(display_name='')))['status'], 422)
 
+    async def test_display_name_command_is_household_scoped_and_separate_from_full_name(self):
+        await self.auth(self.app, 'account', 'new', None)
+        me = (await self.request(self.app, '/me'))['data']['user']
+        house = (await self.request(self.app, '/households', dict(name='Family', person_name='Joe')))['data']['household']['id']
+        with closing(sqlite3.connect(self.database)) as db:
+            person = db.execute('SELECT id FROM household_people WHERE household_id=? AND user_id=?', (house, me['id'])).fetchone()[0]
+        path = f'/households/{house}/people/{person}/name'
+        self.assertEqual((await self.request(self.app, path, dict(display_name='Joey')))['data']['person']['display_name'], 'Joey')
+        self.assertEqual((await self.request(self.app, '/me'))['data']['user']['display_name'], me['display_name'])
+        self.assertEqual((await self.request(self.app, path, dict(display_name='')))['status'], 422)
+
     async def test_mail_does_not_block_heartbeat_or_another_connection(self):
         await self.auth(self.app, 'account', 'new', None)
         await self.app.send_json(dict(v=1, type='request', id='mail', path='/me/verification-email', body={}))

@@ -17,12 +17,10 @@ final class HouseholdService
             }
             $statement = $this->pdo->prepare('INSERT INTO users (firebase_uid, display_name, email, email_verified) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE email = IF(disabled = 0, VALUES(email), email), email_verified = IF(disabled = 0, VALUES(email_verified), email_verified)');
             $statement->execute([$identity['uid'], $identity['name'], $identity['email'] ?? null, !empty($identity['email_verified']) ? 1 : 0]);
-            $statement = $this->pdo->prepare('SELECT id, COALESCE((SELECT p.display_name FROM household_people p WHERE p.user_id = users.id ORDER BY p.id LIMIT 1), display_name) AS display_name, email, email_verified, disabled, account_role FROM users WHERE firebase_uid = ?');
+            $statement = $this->pdo->prepare('SELECT id, display_name, email, email_verified, disabled, account_role FROM users WHERE firebase_uid = ?');
             $statement->execute([$identity['uid']]);
             $user = $statement->fetch(PDO::FETCH_ASSOC);
             if ($user['disabled']) throw new HttpError(403, 'account_disabled', 'This account cannot access the recipe service.');
-            // Adopt the existing household identity for account-wide presentation too.
-            $this->pdo->prepare('UPDATE users SET display_name = ? WHERE id = ?')->execute([$user['display_name'], $user['id']]);
             $this->pdo->commit();
             return ['id' => (string) $user['id'], 'display_name' => $user['display_name'], 'email' => $user['email'], 'email_verified' => (bool) $user['email_verified'], 'account_role' => $user['account_role']];
         } catch (Throwable $error) {
@@ -82,7 +80,6 @@ final class HouseholdService
             $statement->execute([$id, $userId]);
             $statement = $this->pdo->prepare('INSERT INTO household_people (household_id, user_id, display_name) VALUES (?, ?, ?)');
             $statement->execute([$id, $userId, $personName]);
-            $this->pdo->prepare('UPDATE users SET display_name = ? WHERE id = ?')->execute([$personName, $userId]);
             $this->pdo->commit();
             return ['id' => $id, 'name' => $name, 'role' => 'owner'];
         } catch (Throwable $error) {
@@ -133,9 +130,36 @@ final class HouseholdService
             $lock->execute([$userId]);
             if ($lock->fetchColumn() === false) throw new HttpError(404, 'user_not_found', 'Account not found.');
             $this->pdo->prepare('UPDATE users SET display_name = ? WHERE id = ?')->execute([$name, $userId]);
-            $this->pdo->prepare('UPDATE household_people SET display_name = ? WHERE user_id = ?')->execute([$name, $userId]);
             $this->pdo->commit();
             return ['id' => $userId, 'display_name' => $name];
+        } catch (Throwable $error) {
+            if ($this->pdo->inTransaction()) $this->pdo->rollBack();
+            throw $error;
+        }
+    }
+
+    public function renamePerson(string $userId, string $householdId, string $personId, string $name): array
+    {
+        $membership = $this->membership($userId, $householdId);
+        $name = trim($name);
+        if ($name === '' || mb_strlen($name) > 200) throw new HttpError(422, 'invalid_name', 'Enter a name of 1 to 200 characters.');
+        $this->pdo->beginTransaction();
+        try {
+            $q = $this->pdo->prepare('SELECT child_mode FROM users WHERE id = ? FOR UPDATE');
+            $q->execute([$userId]);
+            $actor = $q->fetch(PDO::FETCH_ASSOC);
+            if (!$actor || $actor['child_mode']) throw new HttpError(403, 'child_mode', 'Name editing is unavailable.');
+            $q = $this->pdo->prepare('SELECT p.id, p.user_id, u.child_mode FROM household_people p LEFT JOIN users u ON u.id = p.user_id WHERE p.household_id = ? AND p.id = ? FOR UPDATE');
+            $q->execute([$householdId, $personId]);
+            $person = $q->fetch(PDO::FETCH_ASSOC);
+            if (!$person) throw new HttpError(404, 'person_not_found', 'Household member not found.');
+            $own = (string)($person['user_id'] ?? '') === $userId;
+            if (!$own && (!in_array($membership['role'], ['owner', 'admin'], true) || !$person['user_id'] || !$person['child_mode'])) {
+                throw new HttpError(403, 'permission_denied', 'You cannot edit this name.');
+            }
+            $this->pdo->prepare('UPDATE household_people SET display_name = ? WHERE household_id = ? AND id = ?')->execute([$name, $householdId, $personId]);
+            $this->pdo->commit();
+            return ['id' => $personId, 'display_name' => $name, 'user_id' => (string)$person['user_id']];
         } catch (Throwable $error) {
             if ($this->pdo->inTransaction()) $this->pdo->rollBack();
             throw $error;
@@ -148,9 +172,8 @@ final class HouseholdService
         $q = $this->pdo->prepare('SELECT id FROM household_people WHERE household_id = ? AND user_id = ?');
         $q->execute([$householdId, $userId]);
         $id = $q->fetchColumn();
-        if ($id === false) throw new HttpError(404, 'person_not_found', 'Person not found.');
-        $user = $this->changeName($userId, $name);
-        return ['id' => (string)$id, 'display_name' => $user['display_name'], 'user_id' => $userId];
+        if ($id === false) throw new HttpError(404, 'person_not_found', 'Household member not found.');
+        return $this->renamePerson($userId, $householdId, (string)$id, $name);
     }
 
     public function addPerson(string $userId, string $householdId, string $name): array

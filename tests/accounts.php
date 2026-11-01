@@ -47,24 +47,50 @@ $verificationFailure=accountFixture($pdo,static function() { throw new HttpError
 accountError(fn()=>$verificationFailure->handle('new','/me/verification-email',[]),503,'verification_email_failed');
 echo "$checks account checks passed. No external services or mail used.\n";
 
-// Existing household names win over imported login names until explicitly changed.
-$before=$service->handle('new','/me',null)['user'];
-checkAccount($before['display_name']==='Owner','Existing household name was replaced by login metadata.');
-$pdo->prepare('INSERT INTO household_people(household_id,user_id,display_name) VALUES(?,?,?)')->execute([99,$before['id'],'Older name']);
-$changed=$service->handle('new','/me/name',['display_name'=>'  Lex  '])['user'];
-checkAccount($changed['display_name']==='Lex','Name was not trimmed.');
-checkAccount($pdo->query('SELECT COUNT(*) FROM household_people WHERE user_id='.$before['id']." AND display_name='Lex'")->fetchColumn()==2,'Linked household names differ.');
-checkAccount($service->handle('new','/me',null)['user']['display_name']==='Lex','Stale Firebase metadata restored the previous name.');
-checkAccount($pdo->query("SELECT display_name FROM users WHERE firebase_uid='new'")->fetchColumn()==='Lex','Account name differs.');
+// Account full names and per-household display names stay independent.
+$owner=$service->handle('new','/me',null)['user'];
+checkAccount($owner['display_name']==='New','Household setup overwrote the full name.');
+$pdo->exec("INSERT INTO households(id,name) VALUES(99,'Second table')");
+$pdo->prepare('INSERT INTO household_memberships VALUES(?,?,?)')->execute([99,$owner['id'],'member']);
+$pdo->prepare('INSERT INTO household_people(household_id,user_id,display_name) VALUES(?,?,?)')->execute([99,$owner['id'],'Other display']);
+$changed=$service->handle('new','/me/name',['display_name'=>'  Alex Example  '])['user'];
+checkAccount($changed['display_name']==='Alex Example','Full name not trimmed.');
+checkAccount($service->handle('new','/me',null)['user']['display_name']==='Alex Example','Stale Firebase metadata restored the old full name.');
+$names=$pdo->query('SELECT display_name FROM household_people WHERE user_id='.$owner['id'].' ORDER BY id')->fetchAll(PDO::FETCH_COLUMN);
+checkAccount($names===['Owner','Other display'],'Full name changed household display names.');
+$ownId=(string)$pdo->query('SELECT id FROM household_people WHERE household_id=1 AND user_id='.$owner['id'])->fetchColumn();
+$path="/households/1/people/$ownId/name";
+checkAccount($service->handle('new',$path,['display_name'=>'  Alex  '])['person']['display_name']==='Alex','Own display name did not save.');
+$names=$pdo->query('SELECT display_name FROM household_people WHERE user_id='.$owner['id'].' ORDER BY id')->fetchAll(PDO::FETCH_COLUMN);
+checkAccount($names===['Alex','Other display'],'Display name leaked across households.');
+checkAccount($service->handle('new','/me',null)['user']['display_name']==='Alex Example','Display name changed full name.');
 accountError(fn()=>$service->handle('new','/me/name',['display_name'=>' ']),422,'invalid_name');
-accountError(fn()=>$service->handle('new','/me/name',['display_name'=>str_repeat('x',201)]),422,'invalid_name');
+accountError(fn()=>$service->handle('new',$path,['display_name'=>str_repeat('x',201)]),422,'invalid_name');
 accountError(fn()=>$service->handle('child','/me/name',['display_name'=>'No']),403,'child_mode');
-accountError(fn()=>$service->handle('new','/me/name',null),405,'method_not_allowed');
-checkAccount($service->handle('new','/me',null)['user']['display_name']==='Lex','Rejected save changed the name.');
-echo "Single-name preservation, propagation, stale-login and rejection checks passed.\n";
-$pdo->exec("CREATE TRIGGER fail_name_update BEFORE UPDATE OF display_name ON household_people WHEN NEW.display_name='Fail' BEGIN SELECT RAISE(ABORT,'Simulated write failure'); END");
-try { $service->handle('new','/me/name',['display_name'=>'Fail']); throw new RuntimeException('Expected save failure.'); }
+$child=$service->handle('child','/me',null)['user'];
+$pdo->prepare('INSERT INTO household_memberships VALUES(?,?,?)')->execute([1,$child['id'],'member']);
+$pdo->prepare('INSERT INTO household_people(household_id,user_id,display_name) VALUES(?,?,?)')->execute([1,$child['id'],'Kid']);
+$childPerson=(string)$pdo->lastInsertId();
+$childPath="/households/1/people/$childPerson/name";
+checkAccount($service->handle('new',$childPath,['display_name'=>'Jo'])['person']['display_name']==='Jo','Owner cannot rename child.');
+checkAccount($service->handle('child','/me',null)['user']['display_name']==='Child','Child display edit changed child full name.');
+accountError(fn()=>$service->handle('child',$childPath,['display_name'=>'No']),403,'child_mode');
+accountError(fn()=>$service->handle('child',$path,['display_name'=>'No']),403,'child_mode');
+accountError(fn()=>$service->handle('guest',$childPath,['display_name'=>'No']),403,'permission_denied');
+accountError(fn()=>$service->handle('unverified',$childPath,['display_name'=>'No']),404,'household_not_found');
+$guestId=(string)$pdo->query("SELECT id FROM household_people WHERE household_id=1 AND user_id=(SELECT id FROM users WHERE firebase_uid='guest')")->fetchColumn();
+accountError(fn()=>$service->handle('new',"/households/1/people/$guestId/name",['display_name'=>'No']),403,'permission_denied');
+checkAccount($service->handle('guest',"/households/1/people/$guestId/name",['display_name'=>'Guest nickname'])['person']['display_name']==='Guest nickname','Ordinary adult member cannot rename their own household person.');
+$pdo->prepare("UPDATE household_memberships SET role='admin' WHERE household_id=1 AND user_id=(SELECT id FROM users WHERE firebase_uid='guest')")->execute();
+checkAccount($service->handle('guest',$childPath,['display_name'=>'Joey'])['person']['display_name']==='Joey','Household admin cannot rename child.');
+accountError(fn()=>$service->handle('new',"/households/99/people/$childPerson/name",['display_name'=>'No']),404,'person_not_found');
+accountError(fn()=>$service->handle('new',"/households/1/people/$person/name",['display_name'=>'No']),403,'permission_denied');
+$households=new HouseholdService($pdo);
+try { $households->renameOwnPerson($child['id'],'1','No'); throw new RuntimeException('Child bypassed legacy rename route.'); }
+catch (HttpError $error) { checkAccount($error->errorCode==='child_mode','Wrong child rejection.'); }
+$pdo->exec("CREATE TRIGGER fail_display_update BEFORE UPDATE OF display_name ON household_people WHEN NEW.display_name='Fail' BEGIN SELECT RAISE(ABORT,'Simulated write failure'); END");
+try { $service->handle('new',$path,['display_name'=>'Fail']); throw new RuntimeException('Expected write failure.'); }
 catch (PDOException $error) {}
-checkAccount($service->handle('new','/me',null)['user']['display_name']==='Lex','Failed propagation changed the household name.');
-checkAccount($pdo->query("SELECT display_name FROM users WHERE firebase_uid='new'")->fetchColumn()==='Lex','Failed propagation did not roll back the account name.');
-echo "Name propagation rolls back atomically on write failure.\n";
+checkAccount($households->people($owner['id'],'1')[0]['display_name']==='Alex','Failed save changed display name.');
+checkAccount($service->handle('new','/me',null)['user']['display_name']==='Alex Example','Failed save changed full name.');
+echo "Independent full/display names, household isolation, child permissions, legacy protection and rollback passed.\n";
