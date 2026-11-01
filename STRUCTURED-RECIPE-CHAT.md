@@ -121,3 +121,20 @@ Focused Flutter checks passed 39 tests across chat/import-method/variation files
 changed Dart files were formatted and analyzed without issues. The live synthetic
 probe above additionally exercised the strict schema and real provider.
 No app package, web deployment, release tag or main merge is included.
+
+
+## Verified VPS deployment — 2026-11-01
+
+Deployed application source `5342aa0` from this task branch using the existing
+copy/restart deployer. Installed src/bin/entry-point/lock hashes match that source;
+private configuration hashes are unchanged. Container status is running with zero
+restarts, CpuShares=1024 and unlimited cpu.max. Public HTTPS health returned
+200/ok and AI WebSocket invalid-token auth returned 401. A deployed read-only
+check normalized an existing authorized recipe into structured ingredients and
+steps, using no AI call and making no recipe/context writes.
+
+No database migration, InMotion deployment, app build or main merge occurred.
+The backend protocol remains compatible with the installed test app. New app
+source (including local-question navigation/structured response validation) is
+pushed on the companion feature branch, awaiting an authorized build. Prior
+feature branches and unmerged work were preserved.
