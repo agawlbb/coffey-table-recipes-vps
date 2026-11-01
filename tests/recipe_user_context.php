@@ -3,6 +3,7 @@ declare(strict_types=1);
 require dirname(__DIR__).'/src/HttpError.php';
 require dirname(__DIR__).'/src/RecipeChatService.php';
 
+require __DIR__.'/fixtures/context_database.php';
 $checks=0;
 function expectContext(bool $value,string $message): void { global $checks; if (!$value) throw new RuntimeException($message); $checks++; }
 function contextError(callable $run,string $code): void {
@@ -12,19 +13,20 @@ function contextError(callable $run,string $code): void {
 function contextAdd(string $person,string $preference,string $evidence): array { return ['action'=>'add','id'=>null,'person'=>$person,'preference'=>$preference,'evidence'=>$evidence]; }
 function contextChange(string $action,string $id,?string $preference,string $evidence): array { return ['action'=>$action,'id'=>$id,'person'=>null,'preference'=>$preference,'evidence'=>$evidence]; }
 $directory=sys_get_temp_dir().'/ctr-context-'.bin2hex(random_bytes(6)); mkdir($directory,0700);
+$pdo=contextTestDatabase($directory.'/context.sqlite');
 $payloads=[]; $updates=[]; $omitUpdates=false; $calls=0; $session=0;
 $config=['api_key'=>'fixture-only','model'=>'fixture-model'];
 $transport=static function(array $payload) use (&$payloads,&$updates,&$omitUpdates,&$calls): array {
     $calls++; $payloads[]=$payload;
-    $reply=['show_recipe'=>false,'message'=>'We can keep discussing your cooking preferences.','ready'=>false,'recipe_text'=>''];
+    $reply=['message'=>'We can keep discussing your cooking preferences.','show_recipe'=>false,'recipe_action'=>'keep','changes'=>[]];
     if (!$omitUpdates) $reply['context_updates']=$updates;
     return ['status'=>200,'body'=>json_encode(['status'=>'completed','output'=>[['content'=>[['type'=>'output_text','text'=>json_encode($reply)]]]]])];
 };
-$service=new RecipeChatService($config,$directory,$transport);
+$service=new RecipeChatService($pdo,$config,$directory,$transport);
 $body=static function(string $message) use (&$session): array { return ['request_id'=>sprintf('%032x',++$session),'turn_id'=>str_repeat('1',32),'revision'=>0,'mode'=>'create','action'=>'message','message'=>$message]; };
 $send=static function(string $message,string $user='alice',string $household='house-one') use ($service,$body): array { return $service->handle($body($message),$user,$household,null,[]); };
 $input=static function() use (&$payloads): array { return json_decode(end($payloads)['input'][0]['content'],true); };
-$profile=static fn(string $user)=>$directory.'/recipe-user-context/'.hash('sha256',$user).'.json';
+$profile=static function(string $user) use ($pdo): string { $q=$pdo->prepare('SELECT state_json FROM user_recipe_context WHERE user_id=?');$q->execute([$user]);return (string)$q->fetchColumn(); };
 $chatPath=static fn(array $request,string $user='alice',string $household='house-one')=>$directory.'/recipe-chats/'.hash('sha256',json_encode([$user,$household,$request['request_id']])).'.json';
 try {
     $first=$body('I dislike mushrooms. My son Alex dislikes cilantro.');
@@ -36,13 +38,13 @@ try {
     expectContext($input()['cooking_context']===[],'First chat begins without invented preferences');
     $schema=end($payloads)['text']['format']['schema'];
     expectContext(in_array('context_updates',$schema['required'],true) && $schema['properties']['context_updates']['items']['additionalProperties']===false,'AI must return explicit, strictly structured deltas');
-    $serialized=file_get_contents($profile('alice'));
+    $serialized=$profile('alice');
     expectContext(!str_contains($serialized,'evidence') && !str_contains($serialized,'pending_chat'),'Durable context contains compact facts, not raw evidence or retained chat history');
     $chat=json_decode(file_get_contents($chatPath($first)),true);
     expectContext(!str_contains($chat['messages'][1]['content'],'context_updates'),'Historical assistant messages do not replay stale preference deltas');
 
     $updates=[contextAdd('self','Prefers roasting.','I prefer roasting.')];
-    $fresh=new RecipeChatService($config,$directory,$transport);
+    $fresh=new RecipeChatService($pdo,$config,$directory,$transport);
     $fresh->handle($body('I prefer roasting.'),'alice','house-one',null,[]);
     expectContext(count($input()['cooking_context'])===2,'A fresh worker receives facts learned in a previous conversation');
     expectContext(array_column($input()['cooking_context'],'person')===['self','my son Alex'],'Family preference stays attributed to Alex');
@@ -52,7 +54,7 @@ try {
     $updates=[];
     $hypothetical=$send('What if I remove the mushrooms just for tonight?');
     expectContext($hypothetical['context_updates']===[] && $hypothetical['context_revision']===2,'Discussion with no delta leaves enduring preferences unchanged');
-    expectContext(str_contains(end($payloads)['instructions'],'one-off recipe instructions') && str_contains(end($payloads)['instructions'],'Current explicit requests override remembered preferences'),'Prompt separates enduring preferences from one-dish exceptions and hypotheticals');
+    expectContext(str_contains(end($payloads)['instructions'],'one-dish changes') && str_contains(end($payloads)['instructions'],'Current requests override remembered preferences'),'Prompt separates enduring preferences from one-dish exceptions and hypotheticals');
     $send('Suggest something.','bob');
     expectContext($input()['cooking_context']===[],'Another user in the same household gets no personal or family context');
     $send('Suggest something.','alice','house-two');
@@ -72,7 +74,7 @@ try {
     $updates=[]; $send('What shall I cook?');
     expectContext(count($input()['cooking_context'])===2 && !str_contains(json_encode($input()['cooking_context']),'cilantro'),'Future chats omit forgotten context');
     foreach (glob($directory.'/recipe-chats/*.json') as $file) unlink($file);
-    (new RecipeChatService($config,$directory,$transport))->handle($body('A fresh conversation.'),'alice','house-one',null,[]);
+    (new RecipeChatService($pdo,$config,$directory,$transport))->handle($body('A fresh conversation.'),'alice','house-one',null,[]);
     expectContext(count($input()['cooking_context'])===2,'Deleting working chat caches or restarting the app does not delete durable preferences');
     $spoof=$body('Suggest dinner.')+['user_id'=>'bob','cooking_context'=>[['person'=>'self','preference'=>'CLIENT INJECTION']]];
     $service->handle($spoof,'alice','house-one',null,[]);
@@ -80,7 +82,7 @@ try {
 
     $updates=[contextAdd('my partner Pat','Avoids peanuts.','My partner Pat avoids peanuts.')];
     $otherFamily=$send('My partner Pat avoids peanuts.','alice','house-two')['context_updates'][0]['id'];
-    $before=file_get_contents($profile('alice'));
+    $before=$profile('alice');
     foreach ([
         null,
         ['action'=>'add'],
@@ -96,18 +98,27 @@ try {
     ] as $invalid) {
         $updates=$invalid; $request=$body('Evidence');
         contextError(fn()=>$service->handle($request,'alice','house-one',null,[]),'invalid_ai_reply');
-        expectContext(file_get_contents($profile('alice'))===$before && !is_file($chatPath($request)),'Invalid deltas change neither context nor chat revision');
+        expectContext($profile('alice')===$before && !is_file($chatPath($request)),'Invalid deltas change neither context nor chat revision');
     }
     $omitUpdates=true; $request=$body('Missing deltas');
     contextError(fn()=>$service->handle($request,'alice','house-one',null,[]),'invalid_ai_reply');
     $omitUpdates=false;
     $updates=[contextAdd('self','Likes soup.','I like soup.')];
-    $denied=new RecipeChatService($config+['before_recipe_chat_commit'=>static function(){ throw new HttpError(403,'account_disabled','Account unavailable.'); }],$directory,$transport);
+    $denied=new RecipeChatService($pdo,$config+['before_recipe_chat_commit'=>static function(){ throw new HttpError(403,'account_disabled','Account unavailable.'); }],$directory,$transport);
     contextError(fn()=>$denied->handle($body('I like soup.'),'alice','house-one',null,[]),'account_disabled');
-    expectContext(file_get_contents($profile('alice'))===$before,'Live authorization rejection prevents durable learning');
+    expectContext($profile('alice')===$before,'Live authorization rejection prevents durable learning');
 
     $updates=[];
-    $held=new RecipeUserContext($directory,'alice');
+    // A failed SQL write cannot advance context or its conversation.
+    $updates=[contextAdd('self','Likes soup.','I like soup.')];
+    $sqlFailure=$body('I like soup.');
+    $pdo->exec("CREATE TRIGGER fail_context BEFORE UPDATE ON user_recipe_context WHEN NEW.user_id='alice' BEGIN SELECT RAISE(ABORT,'fixture failure'); END");
+    contextError(fn()=>$service->handle($sqlFailure,'alice','house-one',null,[]),'ai_interrupted');
+    expectContext($profile('alice')===$before && !is_file($chatPath($sqlFailure)),'SQL write failure preserves context and uncommitted turn');
+    $pdo->exec('DROP TRIGGER fail_context');
+    $updates=[];
+    $otherPdo=contextTestDatabase($directory.'/context.sqlite');
+    $held=new RecipeUserContext($otherPdo,$directory,'alice');
     $callsBefore=$calls;
     contextError(fn()=>$send('Another simultaneous chat.'),'chat_in_progress');
     expectContext($calls===$callsBefore,'Simultaneous chats for one account wait without duplicate provider work');
@@ -119,8 +130,8 @@ try {
     $recover=$body('I dislike peas.'); $recoverPath=$chatPath($recover,'recovery'); mkdir($recoverPath,0700);
     $updates=[contextAdd('self','Dislikes peas.','I dislike peas.')];
     contextError(fn()=>$service->handle($recover,'recovery','house-one',null,[]),'ai_interrupted');
-    $pending=json_decode(file_get_contents($profile('recovery')),true);
-    expectContext(isset($pending['pending_chat']) && $pending['revision']===1,'An interrupted two-file commit retains recoverable turn state');
+    $pending=json_decode($profile('recovery'),true);
+    expectContext(isset($pending['pending_chat']) && $pending['revision']===1,'An interrupted SQL/cache commit retains recoverable turn state');
     rmdir($recoverPath);
     $updates=[contextAdd('self','Likes roasting.','I like roasting.')];
     $send('I like roasting.','recovery');
@@ -128,10 +139,19 @@ try {
     $callsBefore=$calls;
     $replayed=$service->handle($recover,'recovery','house-one',null,[]);
     expectContext($calls===$callsBefore && $replayed['context_revision']===1,'Retry recovers the completed original response, never regenerates AI');
-    $recovered=json_decode(file_get_contents($profile('recovery')),true);
+    $recovered=json_decode($profile('recovery'),true);
     expectContext(!isset($recovered['pending_chat']) && $recovered['revision']===2 && count($recovered['facts'])===2,'Recovery and stale replay preserve newer facts without duplicates');
 
-    $bounded=new RecipeUserContext($directory,'bounded');
+    $finalize=$body('I like soup.');
+    $updates=[contextAdd('self','Likes soup.','I like soup.')];
+    $pdo->exec("CREATE TRIGGER fail_finalize BEFORE UPDATE ON user_recipe_context WHEN instr(NEW.state_json,'pending_chat')=0 AND instr(OLD.state_json,'pending_chat')>0 BEGIN SELECT RAISE(ABORT,'fixture finalize failure'); END");
+    contextError(fn()=>$service->handle($finalize,'finalize','house-one',null,[]),'ai_interrupted');
+    expectContext(isset(json_decode($profile('finalize'),true)['pending_chat']) && is_file($chatPath($finalize,'finalize')),'Finalization failure retains SQL recovery state and committed response');
+    $pdo->exec('DROP TRIGGER fail_finalize'); $callsBefore=$calls;
+    $service->handle($finalize,'finalize','house-one',null,[]);
+    expectContext($calls===$callsBefore && !isset(json_decode($profile('finalize'),true)['pending_chat']),'Retry repairs SQL finalization without regenerating or relearning');
+
+    $bounded=new RecipeUserContext($pdo,$directory,'bounded');
     for ($start=0;$start<100;$start+=12) {
         $batch=[];
         for ($i=$start;$i<min(100,$start+12);$i++) $batch[]=contextAdd('self','Cooking preference '.$i,'Evidence');
@@ -148,12 +168,11 @@ try {
     expectContext($empty['facts']===[] && count($empty['updates'])===100,'A single explicit forget request can remove the full visible context');
     $bounded->close();
 
-    file_put_contents($profile('corrupt'),'{invalid');
+    $q=$pdo->prepare('INSERT INTO user_recipe_context VALUES (?,?)');$q->execute(['corrupt','{invalid']);
     $callsBefore=$calls;
     try { $send('Do not overwrite corrupt storage.','corrupt'); throw new LogicException('Corrupt context accepted'); }
-    catch (JsonException $error) { expectContext(file_get_contents($profile('corrupt'))==='{invalid' && $calls===$callsBefore,'Corrupt stored context is preserved, never silently reset'); }
-    foreach (glob($directory.'/recipe-user-context/*') as $file) expectContext((fileperms($file)&0777)===0600 || str_contains($file,hash('sha256','corrupt')),'Context and lock files are private');
-    expectContext((fileperms($directory.'/recipe-user-context')&0777)===0700,'Context directory is private');
+    catch (JsonException $error) { expectContext($profile('corrupt')==='{invalid' && $calls===$callsBefore,'Corrupt stored context is preserved, never silently reset'); }
+    expectContext(!is_dir($directory.'/recipe-user-context'),'Runtime context creates no preference files or file-lock directory');
 } finally {
     $files=new RecursiveIteratorIterator(new RecursiveDirectoryIterator($directory,FilesystemIterator::SKIP_DOTS),RecursiveIteratorIterator::CHILD_FIRST);
     foreach ($files as $file) { if ($file->isDir()) rmdir($file->getPathname()); else unlink($file->getPathname()); }

@@ -4,47 +4,51 @@ declare(strict_types=1);
 /** Private, durable cooking preferences. Never shared with another account. */
 final class RecipeUserContext
 {
-    private $lock=null;
-    private string $path;
+    private bool $locked=false;
+    private string $lockName;
     private array $state;
 
-    public function __construct(private string $storage, string $user) {
-        $directory=$storage.'/recipe-user-context';
-        if (!is_dir($directory) && !mkdir($directory,0700,true) && !is_dir($directory)) throw new RuntimeException('Cannot create cooking context storage.');
-        $this->path=$directory.'/'.hash('sha256',$user).'.json';
-        $lockPath=$directory.'/'.hash('sha256',$user).'.lock';
-        if (is_link($this->path) || is_link($lockPath)) throw new RuntimeException('Invalid cooking context storage.');
+    public function __construct(private PDO $pdo, private string $storage, private string $user) {
+        $this->lockName='ctr-context-'.substr(hash('sha256',$user),0,52);
         try {
-            $this->lock=fopen($lockPath,'c');
-            if ($this->lock===false) throw new RuntimeException('Cannot open cooking context lock.');
-            chmod($lockPath,0600);
-            // Serialize this account's chats so simultaneous sessions cannot lose corrections.
-            if (!flock($this->lock,LOCK_EX|LOCK_NB)) throw new HttpError(409,'chat_in_progress','Another chat is updating your cooking context. Please try again shortly.');
-            $this->state=is_file($this->path) ? json_decode(file_get_contents($this->path),true,128,JSON_THROW_ON_ERROR) : ['revision'=>0,'facts'=>[]];
-            $this->validateState();
-            // Complete a prior turn after a crash between its two atomic file replacements.
-            // Recovery happens before ANY conversation for this account reads its context.
+            $q=$pdo->prepare('SELECT GET_LOCK(?,0)'); $q->execute([$this->lockName]);
+            if ((string)$q->fetchColumn()!=='1') throw new HttpError(409,'chat_in_progress','Another chat is updating your cooking context. Please try again shortly.');
+            $this->locked=true;
+            $q=$pdo->prepare('INSERT IGNORE INTO user_recipe_context (user_id,state_json) VALUES (?,?)');
+            $q->execute([$user,json_encode(['revision'=>0,'facts'=>[]],JSON_THROW_ON_ERROR)]);
+            $q=$pdo->prepare('SELECT state_json FROM user_recipe_context WHERE user_id=?'); $q->execute([$user]);
+            $raw=$q->fetchColumn();
+            if (!is_string($raw)) throw new RuntimeException('Cooking context account unavailable.');
+            $this->state=json_decode($raw,true,128,JSON_THROW_ON_ERROR);
+            self::validateState($this->state);
+            // SQL is authoritative. Recover a cached reply after interruption
+            // between committing SQL and replacing its temporary conversation file.
             if (isset($this->state['pending_chat'])) {
                 $pending=$this->state['pending_chat'];
-                if (!is_array($pending) || !is_string($pending['identity']??null) || !preg_match('/^[a-f0-9]{64}$/D',$pending['identity']) || !is_array($pending['state']??null)) throw new RuntimeException('Invalid pending cooking context update.');
                 self::write($storage.'/recipe-chats/'.$pending['identity'].'.json',$pending['state']);
                 unset($this->state['pending_chat']);
-                self::write($this->path,$this->state);
+                $this->save($this->state);
             }
         } catch (Throwable $error) { $this->close(); throw $error; }
     }
 
     public function close(): void {
-        if (is_resource($this->lock)) { flock($this->lock,LOCK_UN); fclose($this->lock); }
-        $this->lock=null;
+        if (!$this->locked) return;
+        $this->locked=false;
+        try { $q=$this->pdo->prepare('SELECT RELEASE_LOCK(?)'); $q->execute([$this->lockName]); }
+        catch (PDOException $error) { /* A disconnected worker releases its SQL locks. */ }
     }
 
     public function __destruct() { $this->close(); }
 
-    private function validateState(): void {
-        if (!is_int($this->state['revision']??null) || $this->state['revision']<0 || !is_array($this->state['facts']??null) || !array_is_list($this->state['facts']) || count($this->state['facts'])>100) throw new RuntimeException('Invalid stored cooking context.');
+    public static function validateState(array $state): void {
+        if (!is_int($state['revision']??null) || $state['revision']<0 || !is_array($state['facts']??null) || !array_is_list($state['facts']) || count($state['facts'])>100) throw new RuntimeException('Invalid stored cooking context.');
+        if (isset($state['pending_chat'])) {
+            $pending=$state['pending_chat'];
+            if (!is_array($pending) || !is_string($pending['identity']??null) || !preg_match('/^[a-f0-9]{64}$/D',$pending['identity']) || !is_array($pending['state']??null)) throw new RuntimeException('Invalid pending cooking context update.');
+        }
         $ids=[];
-        foreach ($this->state['facts'] as $fact) {
+        foreach ($state['facts'] as $fact) {
             if (!is_array($fact) || !is_string($fact['id']??null) || !preg_match('/^[a-f0-9]{32}$/D',$fact['id']) || isset($ids[$fact['id']])
                 || !is_string($fact['person']??null) || trim($fact['person'])==='' || mb_strlen($fact['person'])>80
                 || !is_string($fact['preference']??null) || trim($fact['preference'])==='' || mb_strlen($fact['preference'])>500
@@ -107,14 +111,24 @@ final class RecipeUserContext
         return ['revision'=>$this->state['revision']+($applied===[]?0:1),'facts'=>array_values($facts),'updates'=>$applied];
     }
 
-    /** Commit preferences and the successful chat turn together, with crash recovery. */
+    /** Commit preferences and the successful chat turn together, with SQL-backed crash recovery. */
     public function commit(array $next, string $identity, array $chat): void {
         if (!preg_match('/^[a-f0-9]{64}$/D',$identity)) throw new RuntimeException('Invalid chat identity.');
         $state=['revision'=>$next['revision'],'facts'=>$next['facts']];
-        self::write($this->path,$state+['pending_chat'=>['identity'=>$identity,'state'=>$chat]]);
+        $this->save($state+['pending_chat'=>['identity'=>$identity,'state'=>$chat]]);
         self::write($this->storage.'/recipe-chats/'.$identity.'.json',$chat);
-        self::write($this->path,$state);
+        $this->save($state);
         $this->state=$state;
+    }
+
+    private function save(array $state): void {
+        try {
+            $q=$this->pdo->prepare('UPDATE user_recipe_context SET state_json=? WHERE user_id=?');
+            $q->execute([json_encode($state,JSON_THROW_ON_ERROR),$this->user]);
+            if ($q->rowCount()!==1) throw new RuntimeException('Cooking context account unavailable.');
+        } catch (PDOException $error) {
+            throw new HttpError(503,'ai_interrupted','Could not save your cooking context. Please retry the last request.');
+        }
     }
 
     private static function write(string $path, array $value): void {

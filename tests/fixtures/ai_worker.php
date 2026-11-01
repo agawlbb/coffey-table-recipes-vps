@@ -3,12 +3,14 @@ declare(strict_types=1);
 require_once dirname(__DIR__,2).'/bootstrap.php';
 final class AiFixturePDO extends PDO {
     public function prepare(string $query,array $options=[]): PDOStatement|false {
-        return parent::prepare(str_replace([' FOR UPDATE',' <=> '],['',' IS '],$query),$options);
+        return parent::prepare(str_replace([' FOR UPDATE',' <=> ','INSERT IGNORE'],['',' IS ','INSERT OR IGNORE'],$query),$options);
     }
 }
 $file=getenv('CTR_TEST_DATABASE');
 if (!$file || !str_starts_with(basename($file),'ctr-wire-')) throw new RuntimeException('Disposable test database required.');
 $pdo=new AiFixturePDO('sqlite:'.$file);
+require __DIR__.'/context_database.php';
+contextTestLocks($pdo,(getenv('CTR_STORAGE') ?: sys_get_temp_dir()).'/test-sql-locks');
 $verify=static function(string $token): array {
     if (!in_array($token,['alice','bob','disabled'],true)) throw new HttpError(401,'invalid_token','Invalid token.');
     return ['uid'=>$token];
@@ -19,7 +21,7 @@ $transport=static function(array $payload): array {
     usleep(1200000);
     if (is_string($payload['input']??null) && str_contains($payload['input'],'"category":"Failure"')) return ['status'=>503,'body'=>'{}'];
     if (($payload['text']['format']['name']??'')==='recipe_chat') {
-        $context=json_decode($payload['input'][0]['content'],true)['cooking_context'];
+        $input=json_decode($payload['input'][0]['content'],true);$context=$input['cooking_context'];
         $latest=$payload['input'][count($payload['input'])-1]['content'];
         $updates=[];
         if ($latest==='I dislike mushrooms.') $updates[]=['action'=>'add','id'=>null,'person'=>'self','preference'=>'Dislikes mushrooms.','evidence'=>$latest];
@@ -32,8 +34,12 @@ $transport=static function(array $payload): array {
         }
         return ['status'=>200,'body'=>json_encode(['status'=>'completed','output'=>[['content'=>[['type'=>'output_text','text'=>json_encode([
             'message'=>'Remembered: '.implode(' | ',array_map(static fn($fact)=>$fact['person'].': '.$fact['preference'],$context)),
-            'ready'=>true,'show_recipe'=>$latest==='Show the recipe again.','context_updates'=>$updates,
-            'recipe_text'=>'Agreed soup. 2 cups water, 1 teaspoon salt. Bring to a boil and simmer for 2 minutes. Serves 2.',
+            'show_recipe'=>$latest==='Show the recipe again.','recipe_action'=>(!$input['working_recipe']['ingredients'] || !$input['working_recipe']['steps'])?'patch':'keep','context_updates'=>$updates,
+            'changes'=>(!$input['working_recipe']['ingredients'] || !$input['working_recipe']['steps'])?[
+                ['op'=>'set','path'=>'/title','value_json'=>json_encode('Agreed soup')],
+                ['op'=>'set','path'=>'/ingredients','value_json'=>json_encode([['original_text'=>'2 cups water','ingredient_name'=>'water'],['original_text'=>'1 teaspoon salt','ingredient_name'=>'salt']])],
+                ['op'=>'set','path'=>'/steps','value_json'=>json_encode([['instruction'=>'Bring to a boil and simmer for 2 minutes.','actions'=>[['action_type'=>'timer','duration_seconds'=>120]]]])],
+            ]:[],
         ])]]]]])];
     }
     if (str_contains(json_encode($payload),'Agreed soup')) return ['status'=>200,'body'=>json_encode(['status'=>'completed','output'=>[['content'=>[['type'=>'output_text','text'=>json_encode([

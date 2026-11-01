@@ -502,7 +502,8 @@ PROMPT;
         if ($variation && !empty($this->config['variation_agreed_recipe'])) {
             $prompt .= "\nThe requested_changes field contains the complete recipe already agreed in a conversation, not an invitation to invent more adaptations. Standardize that agreed recipe exactly. Do not introduce additional substitutions, amounts, methods or alternatives. Use the original only for unaffected context and the existing variation title/language conventions. Keep hypothetical or rejected changes out of the result.";
         }
-        $payload = ['model'=>$this->config['model'],'store'=>false,'max_output_tokens'=>7000,'reasoning'=>['effort'=>'medium'],'instructions'=>$prompt,
+        $review=!empty($this->config['chat_review']);
+        $payload = ['model'=>$this->config['model'],'store'=>false,'max_output_tokens'=>$review?12000:7000,'reasoning'=>['effort'=>$review?'low':'medium'],'instructions'=>$prompt,
             'text'=>['format'=>self::responseFormat($variation,$categories)], 'input'=>[['role'=>'user','content'=>$content]]];
         if ($variation) {
             $language=$this->config['variation_language'] ?? null;
@@ -547,14 +548,27 @@ PROMPT;
             $payload['include']=['web_search_call.action.sources'];
         }
         ($this->config['progress'] ?? static function(){})('Preparing recipe with AI…');
-        if ($this->transport !== null) {
-            $result = ($this->transport)($payload);
-            $raw = $result['body']; $status = $result['status']; $curlError = $result['error'] ?? 0;
-        } else {
-            $ch = curl_init('https://api.openai.com/v1/responses');
-            curl_setopt_array($ch,[CURLOPT_POST=>true,CURLOPT_RETURNTRANSFER=>true,CURLOPT_CONNECTTIMEOUT=>10,CURLOPT_TIMEOUT=>480,
-                CURLOPT_HTTPHEADER=>['Authorization: Bearer '.$key,'Content-Type: application/json'],CURLOPT_POSTFIELDS=>json_encode($payload,JSON_THROW_ON_ERROR)]);
-            $raw = curl_exec($ch); $status = curl_getinfo($ch,CURLINFO_RESPONSE_CODE); $curlError = curl_errno($ch); curl_close($ch);
+        // A review is formatting an existing draft, not developing another dish.
+        // A reasoning/output cap is recoverable, but never accept partial JSON.
+        for ($attempt=0;;$attempt++) {
+            if ($this->transport !== null) {
+                $result = ($this->transport)($payload);
+                $raw = $result['body']; $status = $result['status']; $curlError = $result['error'] ?? 0;
+            } else {
+                $ch = curl_init('https://api.openai.com/v1/responses');
+                curl_setopt_array($ch,[CURLOPT_POST=>true,CURLOPT_RETURNTRANSFER=>true,CURLOPT_CONNECTTIMEOUT=>10,CURLOPT_TIMEOUT=>$review?240:480,
+                    CURLOPT_HTTPHEADER=>['Authorization: Bearer '.$key,'Content-Type: application/json'],CURLOPT_POSTFIELDS=>json_encode($payload,JSON_THROW_ON_ERROR)]);
+                $raw = curl_exec($ch); $status = curl_getinfo($ch,CURLINFO_RESPONSE_CODE); $curlError = curl_errno($ch); curl_close($ch);
+            }
+            $envelope=$status===200 && is_string($raw)?json_decode($raw,true):null;
+            if ($review && $attempt===0 && ($envelope['status']??'')==='incomplete'
+                && ($envelope['incomplete_details']['reason']??'')==='max_output_tokens') {
+                error_log('Recipe chat preparation: output limit reached; retrying once with 20000 tokens.');
+                $payload['max_output_tokens']=20000;
+                ($this->config['progress']??static function(){})('Finishing preparation of your working recipe…');
+                continue;
+            }
+            break;
         }
         if ($raw === false || $status !== 200) {
             $failure = $raw === false ? [] : (json_decode($raw,true)['error'] ?? []);
@@ -574,7 +588,14 @@ PROMPT;
         }
         $response = json_decode($raw,true); $reply = '';
         ($this->config['progress'] ?? static function(){})('Checking the recipe draft…');
-        if (($response['status'] ?? '') !== 'completed') throw new HttpError(502,'invalid_ai_reply','AI could not finish this recipe. Try importing just the ingredients and cooking instructions. Your input has not been saved.');
+        if (($response['status'] ?? '') !== 'completed') {
+            $reason=$response['incomplete_details']['reason']??'unknown';
+            if (!is_string($reason) || !preg_match('/^[a-z_]{1,60}$/D',$reason)) $reason='unknown';
+            error_log('Recipe AI incomplete response: reason='.$reason.'; limit='.$payload['max_output_tokens'].'; output_tokens='.(int)($response['usage']['output_tokens']??0).'; reasoning_tokens='.(int)($response['usage']['output_tokens_details']['reasoning_tokens']??0));
+            throw new HttpError(502,'invalid_ai_reply',$review
+                ? 'Could not prepare your working recipe for review. Your chat and draft are still here. Please try Review and save again.'
+                : 'AI could not finish this recipe. Try importing just the ingredients and cooking instructions. Your input has not been saved.');
+        }
         foreach ($response['output'] ?? [] as $item) foreach ($item['content'] ?? [] as $part) if (($part['type'] ?? '')==='refusal') throw new HttpError(502,'invalid_ai_reply','AI could not process this source. Try pasting just the recipe ingredients and instructions. Your input has not been saved.');
         foreach ($response['output'] ?? [] as $item) foreach ($item['content'] ?? [] as $part) if (($part['type'] ?? '')==='output_text') $reply .= $part['text'];
         $result = json_decode($reply,true);
