@@ -4,8 +4,8 @@ This repository contains the VPS data service at
 `wss://ctr.coffeybean.com/shopping`. The same connection now carries shopping,
 recipe reads/adds/edits, household snapshots, restaurants and meal plans.
 Account-scoped WebSocket connections synchronize timers; unauthenticated,
-read-only connections serve public recipe links. The persistent MySQL database
-stays on InMotion. Account bootstrap, household setup, verification mail and
+read-only connections serve public recipe links. The persistent MariaDB database runs in the VPS database container on the private
+`database-backend` network. Account bootstrap, household setup, verification mail and
 invitations use the account WebSocket scope; see [ACCOUNT-WEBSOCKET.md](ACCOUNT-WEBSOCKET.md).
 Child-mode policy, PIN changes and administrator resets use the SQL-backed VPS
 account scope; see [CHILD-MODE-SQL.md](CHILD-MODE-SQL.md). Remaining administration, Home Assistant setup, public recipe pages and managed images
@@ -48,7 +48,8 @@ Production uses CPU shares 1024 with no hard CPU quota, allowing idle CPU use.
 Deployment verifies Docker CpuShares and effective cgroup cpu.max after restart.
 Keep memory/swap, process, security and restart settings unchanged.
 
-Docker/Compose, the existing Caddy route, private database/Firebase configuration
+Docker/Compose, the existing Caddy route, running VPS MariaDB and its external
+`database-backend` network, private database/Firebase configuration
 and locked Composer dependencies are setup prerequisites. Runtime image changes
 are explicit: `sudo docker build -t ctr-backend:latest .`. Google Firebase uses
 the existing project. No separate VPS Firebase project is needed.
@@ -297,3 +298,54 @@ and user-context source hashes match main. CpuShares=1024 and unlimited cpu.max
 were verified. Persistent state and private configuration stay outside replaced
 code. No app build, paid AI request, recipe write, database migration or InMotion
 backend deployment was performed. This supersedes the earlier pending status.
+
+
+## VPS database migration — 2026-11-01
+
+The recipe database moved from InMotion MariaDB 10.11.19 to VPS MariaDB 11.8.9.
+The backend joins the existing internal `database-backend` network alongside
+`proxy`; MariaDB remains unexposed on host/public ports. The existing PDO MySQL
+driver works with MariaDB; no application SQL or dependencies changed.
+
+Private `database.json` now selects host `mariadb`, port 3306, database
+`coffey_table_recipes` and application user `ctr_backend`. This user has only
+SELECT/INSERT/UPDATE/DELETE on that database. Its generated password stays outside
+Git. TLS is disabled for this local Docker connection, which stays on the private
+network. Each other project must use its own database and user. Routine deployment
+preserves these credentials and does not create databases or import data.
+
+Clients were paused and the backend and recipe cleanup timer stopped for export.
+A complete SQL export, original connection settings, source privileges and
+verification manifests are retained under the root-only
+`/opt/services/ctr-backend/backups/database-migration-20261101T123755Z/`.
+The source database remains intact; its temporary export privileges were restored.
+No views, routines, triggers or events were present after checking with elevated
+source database permissions.
+
+Rollback before new client writes: stop the backend and cleanup timer, restore
+`database.inmotion.json` from that protected directory to private `database.json`
+with its existing ownership/mode, and restart the backend and timer. After client
+writes resume, preserve/reconcile new VPS data before any rollback. Do not restore
+the old database over new data. The backup is on this VPS; it is not an off-server
+backup. Existing InMotion data is retained separately.
+
+Verification: all 31 tables matched exact row counts and per-row content hashes,
+including 70 recipes, 1 household and 3 accounts. Column definitions, indexes,
+foreign keys, check constraints and next auto-increment IDs matched. Composite
+foreign-key checks found no orphans. Membership-authorized complete snapshots
+passed for all 3 memberships. A restricted-user UPDATE/readback/ROLLBACK passed;
+all table contents still matched afterward. The complete comparison was repeated
+after the live probe, which creates then deletes its own temporary HA credential.
+
+`dev exec python3 -m unittest discover -s tests -p test_deployment.py` passed all
+4 deployment-preservation checks; `git diff --check` and `docker compose config
+--quiet` passed. Actual deployed PHP/entry-point/lockfile hashes and Compose bytes
+matched this source. Live runtime identity confirmed VPS MariaDB 11.8.9; HTTPS
+health and existing recipe `/recipes/9` returned 200. The existing
+`tests/live_shopping.py` probe passed authenticated public WSS shopping reads and
+open-connection credential revocation. No existing shopping entries were edited.
+The recipe cleanup timer was restored active; CpuShares=1024 and unlimited
+cpu.max were verified. No app package or runtime image was built.
+
+Protected SQL export SHA-256:
+`4eb05d270b644875e2076648bb2eeb471e49da64d730b1411b859db69b495893`.

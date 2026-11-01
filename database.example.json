@@ -1,8 +1,8 @@
 {
-  "host": "",
+  "host": "mariadb",
   "port": 3306,
-  "database": "",
-  "username": "",
+  "database": "coffey_table_recipes",
+  "username": "ctr_backend",
   "password": "",
   "tls": false,
   "ca_file": "/etc/ssl/certs/ca-certificates.crt"

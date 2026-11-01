@@ -35,7 +35,7 @@ adding complexity. Stay within the requested behavior; no unsolicited features.
   `/home/debian/.local/bin/dev exec`. Respect workspace instructions.
 - Keep credentials, private config, dependencies, logs and generated files out
   of Git. Dependencies are project-local and locked. Never print secrets.
-- The persistent MySQL database remains on inMotion. Never use production data
+- The persistent MariaDB database runs on the VPS private database network. Never use production data
   or production containers for development tests. Use disposable SQLite fixtures.
 - Use proportionate validation: affected PHP fixtures and wire tests for socket
   changes; deployment preservation tests for deployer changes; diff review for
