@@ -74,7 +74,7 @@ class AiWireTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(reply['type'], 'response', reply)
         data = reply['data']
         self.assertIn('2 cups water', data['recipe_text'])
-        self.assertNotIn('Current recipe draft', data['message'])
+        self.assertNotIn('Draft recipe', data['message'])
         self.assertNotIn('draft', data)
         await self.send_ai('/households/1/recipe-chat', body)
         replay, _ = await self.result()
@@ -119,7 +119,7 @@ class AiWireTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(reply['type'], 'response', reply)
         self.assertEqual(reply['data']['revision'], 1)
         self.assertNotIn('draft', reply['data'])
-        self.assertIn('Current recipe draft', reply['data']['message'])
+        self.assertIn('Draft recipe', reply['data']['message'])
         self.assertIn('Agreed soup', reply['data']['message'])
         self.assertIn('simmer for 2 minutes', reply['data']['message'])
         self.assertTrue(any(e.get('type') == 'progress' for e in events))

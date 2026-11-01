@@ -502,6 +502,7 @@ PROMPT;
         if ($variation && !empty($this->config['variation_agreed_recipe'])) {
             $prompt .= "\nThe requested_changes field contains the complete recipe already agreed in a conversation, not an invitation to invent more adaptations. Standardize that agreed recipe exactly. Do not introduce additional substitutions, amounts, methods or alternatives. Use the original only for unaffected context and the existing variation title/language conventions. Keep hypothetical or rejected changes out of the result.";
         }
+        if(!empty($this->config['chat_import_agreed_draft']))$prompt.="\nThis is the complete agreed draft recipe from a cooking conversation. Import its actual ingredients, quantities, method, timings and notes exactly. Do not redesign it, suggest substitutions, add seasoning or compensate for dietary changes; those decisions were already made in chat. Only structure the agreed recipe for the editor.";
         $review=!empty($this->config['chat_review']);
         $payload = ['model'=>$this->config['model'],'store'=>false,'max_output_tokens'=>$review?12000:7000,'reasoning'=>['effort'=>$review?'low':'medium'],'instructions'=>$prompt,
             'text'=>['format'=>self::responseFormat($variation,$categories)], 'input'=>[['role'=>'user','content'=>$content]]];

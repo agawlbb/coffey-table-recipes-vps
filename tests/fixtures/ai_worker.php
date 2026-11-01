@@ -34,12 +34,9 @@ $transport=static function(array $payload): array {
         }
         return ['status'=>200,'body'=>json_encode(['status'=>'completed','output'=>[['content'=>[['type'=>'output_text','text'=>json_encode([
             'message'=>'Remembered: '.implode(' | ',array_map(static fn($fact)=>$fact['person'].': '.$fact['preference'],$context)),
-            'show_recipe'=>$latest==='Show the recipe again.','recipe_action'=>(!$input['working_recipe']['ingredients'] || !$input['working_recipe']['steps'])?'patch':'keep','context_updates'=>$updates,
-            'changes'=>(!$input['working_recipe']['ingredients'] || !$input['working_recipe']['steps'])?[
-                ['op'=>'set','path'=>'/title','value_json'=>json_encode('Agreed soup')],
-                ['op'=>'set','path'=>'/ingredients','value_json'=>json_encode([['original_text'=>'2 cups water','ingredient_name'=>'water'],['original_text'=>'1 teaspoon salt','ingredient_name'=>'salt']])],
-                ['op'=>'set','path'=>'/steps','value_json'=>json_encode([['instruction'=>'Bring to a boil and simmer for 2 minutes.','actions'=>[['action_type'=>'timer','duration_seconds'=>120]]]])],
-            ]:[],
+            'show_recipe'=>$latest==='Show the recipe again.','ready'=>true,'context_updates'=>$updates,
+            'recipe'=>['title'=>'Agreed soup','ingredients'=>[['original_text'=>'2 cups water','ingredient_name'=>'water'],['original_text'=>'1 teaspoon salt','ingredient_name'=>'salt']],
+                'steps'=>[['instruction'=>'Bring to a boil and simmer for 2 minutes.','actions'=>[['action_type'=>'timer','duration_seconds'=>120]]]]],
         ])]]]]])];
     }
     if (str_contains(json_encode($payload),'Agreed soup')) return ['status'=>200,'body'=>json_encode(['status'=>'completed','output'=>[['content'=>[['type'=>'output_text','text'=>json_encode([

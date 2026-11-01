@@ -18,7 +18,7 @@ $payloads=[]; $updates=[]; $omitUpdates=false; $calls=0; $session=0;
 $config=['api_key'=>'fixture-only','model'=>'fixture-model'];
 $transport=static function(array $payload) use (&$payloads,&$updates,&$omitUpdates,&$calls): array {
     $calls++; $payloads[]=$payload;
-    $reply=['message'=>'We can keep discussing your cooking preferences.','show_recipe'=>false,'recipe_action'=>'keep','changes'=>[]];
+    $reply=['message'=>'We can keep discussing your cooking preferences.','show_recipe'=>false,'ready'=>false,'recipe'=>null];
     if (!$omitUpdates) $reply['context_updates']=$updates;
     return ['status'=>200,'body'=>json_encode(['status'=>'completed','output'=>[['content'=>[['type'=>'output_text','text'=>json_encode($reply)]]]]])];
 };
@@ -54,7 +54,7 @@ try {
     $updates=[];
     $hypothetical=$send('What if I remove the mushrooms just for tonight?');
     expectContext($hypothetical['context_updates']===[] && $hypothetical['context_revision']===2,'Discussion with no delta leaves enduring preferences unchanged');
-    expectContext(str_contains(end($payloads)['instructions'],'one-dish changes') && str_contains(end($payloads)['instructions'],'Current requests override remembered preferences'),'Prompt separates enduring preferences from one-dish exceptions and hypotheticals');
+    expectContext(str_contains(end($payloads)['instructions'],'one-off recipe instructions') && str_contains(end($payloads)['instructions'],'Current explicit requests override remembered preferences'),'Prompt separates enduring preferences from one-dish exceptions and hypotheticals');
     $send('Suggest something.','bob');
     expectContext($input()['cooking_context']===[],'Another user in the same household gets no personal or family context');
     $send('Suggest something.','alice','house-two');
