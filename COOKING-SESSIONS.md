@@ -194,3 +194,8 @@ WebSocket delivery are unchanged.
 `php -l src/CookingSessions.php` passed. Added cases cover an unjoined device for
 the same account, an invited account, inaccessible-account rejection, timer
 mutation rejection before joining, cancellation, and no implicit join.
+
+Deployed task source `bf7cf2e` using `python3 deploy.py` on 2026-11-03.
+Service restart, socket readiness and CPU policy passed; public health returned
+`status:ok`. The deployed CookingSessions.php hash matches the committed task
+source. Main integration remains pending; no database changes were needed.
