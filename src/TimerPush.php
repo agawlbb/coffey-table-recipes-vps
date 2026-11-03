@@ -22,18 +22,21 @@ final class TimerPush
 
     public function send(array $device, array $timer): bool
     {
-        $data=['kind'=>'recipe_timer'];
+        $invitation=($timer['kind']??'')==='cooking_invitation';
+        $session=isset($timer['session_id']);
+        $data=['kind'=>$invitation?'cooking_invitation':'recipe_timer'];
         foreach ($timer as $key=>$value) $data[$key]=is_bool($value)?($value?'1':'0'):(string)$value;
         // Keep cancellations deliverable after the old deadline, but never replay
         // an expired start. Native clients also check deadlines and revisions.
-        $ttl=$timer['cancelled']?86400:max(0,min(604800,(int)ceil(($timer['deadline_ms']-microtime(true)*1000)/1000)));
+        $ttl=$invitation ? 86400 : ($timer['cancelled']?86400:max(0,min(604800,(int)ceil(($timer['deadline_ms']-microtime(true)*1000)/1000))));
         $message=['token'=>$device['push_token'],'data'=>$data,
-            'android'=>['priority'=>'high','ttl'=>$ttl.'s','collapse_key'=>hash('sha256',$timer['timer_id'])]];
+            'android'=>['priority'=>($invitation || !$session)?'high':'normal','ttl'=>$ttl.'s','collapse_key'=>hash('sha256',$timer['timer_id']??$timer['session_id'])]];
         if ($device['platform']==='ios') {
             $aps=['content-available'=>1];
-            if (!$timer['cancelled']) $aps['alert']=['title'=>'Cooking timer from another device','body'=>$timer['title'].' — open to confirm your timer is ready.'];
-            $message['apns']=['headers'=>['apns-push-type'=>$timer['cancelled']?'background':'alert','apns-priority'=>$timer['cancelled']?'5':'10',
-                'apns-expiration'=>(string)(time()+$ttl),'apns-collapse-id'=>hash('sha256',$timer['timer_id'])],'payload'=>['aps'=>$aps]];
+            if ($invitation) $aps['alert']=['title'=>'Cooking invitation','body'=>$timer['title']];
+            elseif (!$session && !$timer['cancelled']) $aps['alert']=['title'=>'Cooking timer from another device','body'=>$timer['title'].' — open to confirm your timer is ready.'];
+            $message['apns']=['headers'=>['apns-push-type'=>isset($aps['alert'])?'alert':'background','apns-priority'=>isset($aps['alert'])?'10':'5',
+                'apns-expiration'=>(string)(time()+$ttl),'apns-collapse-id'=>hash('sha256',$timer['timer_id']??$timer['session_id'])],'payload'=>['aps'=>$aps]];
         }
         [$status,$body]=$this->post('https://fcm.googleapis.com/v1/projects/'.rawurlencode($this->config['firebase_project_id']).'/messages:send',
             json_encode(['message'=>$message],JSON_THROW_ON_ERROR),['Content-Type: application/json','Authorization: Bearer '.$this->accessToken()]);

@@ -1,0 +1,89 @@
+# Cooking sessions
+
+Task: `task/cooking-sessions`. App base `0f3b822`; VPS base `c28b633`.
+
+Starting cooking creates a server session and joins this installation. If the
+recipe has an active session, choose the existing attempt or start another.
+Starting a new session requires sign-in and a connection. Session progress uses
+the recipe snapshot captured at creation, so later recipe edits do not change
+step/action identities during cooking.
+
+The household navigation drawer, including recipe detail and cooking mode, lists
+recipe names with only **Open** (joined here) or **Join**. Both open the first
+unchecked step; subsequent remote edits preserve the viewing position. Switching
+dishes keeps other joined sessions and their timers active. Long-press goes
+directly to household members; tapping one shares and sends an invitation. Access
+is explicit, not automatically granted to the whole household. Invited sessions
+remain in the recipient's drawer until ending/expiry, even after dismissing the
+notification or initial mirror invitation.
+
+Cooking has **End cooking session** at the bottom. Ending affects all participants
+and cancels session timers; running timers require confirmation. Completing the
+checklist or leaving the page does not end the session. The server starts the idle
+period once no joined device is viewing that session in the foreground. It lasts
+one hour plus the recipe's total estimate (or prep + cook when total is absent),
+with a one-hour fallback. Reopening resets it; expiry cannot precede the latest
+running timer's deadline. Foreground presence renews every 20 seconds with a
+60-second server lease for unexpected disconnects. A lost connection can therefore
+add up to a minute of grace. Expired sessions are removed on the next server sweep
+or read; a 30-second sweep publishes expiry to connected clients. Recent ended
+sessions retain cancellation tombstones for seven days.
+
+## Transport and alarms
+
+The existing authenticated WebSocket gains a `cooking` scope and
+`/me/cooking-sessions` endpoints. Server-owned per-step and per-timer revisions
+reject stale edits; operation IDs make retries idempotent. Different step edits
+merge independently. Snapshots reconcile reconnects and app resume. Account
+changes clear client session state immediately and reject delayed responses.
+Household membership is rechecked for discovery, sharing and mutations.
+
+Timers have session-scoped IDs and absolute deadlines. Native alarm state survives
+app suspension; server time offsets adjust local countdowns/scheduling. Local
+mobile start/edit/cancel operations are durably queued per account, preserving
+deadlines, operation IDs and expected revisions. Steps require a connection;
+failed edits remain unchecked/unchanged and report an actionable error.
+
+Initial timer delivery and progress use WebSockets. Silent pushes supplement
+cancellations and changes to existing timers for joined mobile devices. They
+produce no timer-sharing banners or sounds. Background delivery is best effort:
+an offline, suspended or force-stopped device can miss a cancellation and ring.
+Visible invitation notifications are separate. Native account, installation,
+session-membership and revision guards reject unrelated or stale timer updates.
+The old account-wide receiving switch and Flutter timer-sharing coordinator are
+removed. Existing server timer-device registration supplies push tokens; no new
+credential or database setup is required.
+
+## Server storage
+
+The VPS stores sessions under the existing persistent `CTR_STORAGE/cooking`
+directory. One locked JSON store is replaced atomically; the lock is separate
+from the replaced file. The existing one-worker server owns broadcasts. Session
+snapshots are filtered per authenticated user, and cooking recipe snapshots omit
+private source text and editor-only metadata. WebSocket responses/broadcasts are
+sent before the best-effort push sender runs. No schema migration or new service
+is introduced. Existing deployment preserves the state directory.
+
+## Validation
+
+No app build,
+release, native installation or main integration is part of this task. Native
+background behavior and OS delivery still require physical-device acceptance in
+an explicitly authorized build/release.
+
+Server checks passed on 2026-11-03:
+
+- PHP syntax checks for `CookingSessions`, `DataSocket`, `TimerPush` and `server.php`.
+- `php tests/cooking_sessions.php`: discovery, explicit invitations, device joins,
+  independent step edits, stale revisions, timer targeting, request replay,
+  inactivity estimates, timer deadline protection, explicit ending and revoked
+  household membership, using disposable SQLite and session storage.
+- `php tests/timer_push.php`: credential reuse/renewal, silent iOS/Android session
+  updates and visible invitation payloads, with a fake sender transport.
+- `php tests/data_socket.php`, `php tests/authentication.php`,
+  `php tests/shopping_socket.php`, `php tests/timer_sync.php`: existing data,
+  identity, shopping and account-timer regressions passed.
+- `.venv/bin/python -m unittest discover -s tests -p cooking_websocket.py`:
+  both real WebSocket tests passed, including the 30-second expiry sweep without
+  a client write. The existing `data_websocket.py` suite's five tests also passed.
+- `git diff --check` passed. No production data was used in tests.

@@ -41,7 +41,9 @@ $broadcast = static function (array $source) use (&$clients, $factory, $send): v
         if (!isset($entry['token'])) continue;
         $scope=$entry['scope'] ?? 'shopping';
         if ($scope==='public') continue;
-        if ($source['scope']==='timers') {
+        if ($source['scope']==='cooking') {
+            if ($scope!=='cooking') continue;
+        } elseif ($source['scope']==='timers') {
             if ($scope!=='timers' || $entry['actor']['user']!==$source['actor']['user']) continue;
         } elseif (!in_array($scope,['shopping','household'],true)) continue;
         // Canonical recipes can belong to multiple households. Refresh each
@@ -127,7 +129,7 @@ $worker->onMessage = static function (TcpConnection $c, string $text) use (&$cli
             if ($entry['scope']==='account') throw new HttpError(404,'not_found','Account endpoint not found.');
             if (AiService::matches($m['path']) || AiService::categorizesSave($m['path'],$body)) {
                 if ($entry['scope']!=='ai' && !AiService::categorizesSave($m['path'],$body)) throw new HttpError(403,'permission_denied','Use an AI connection.');
-                if ($entry['scope']==='shopping' || $entry['scope']==='public' || $entry['scope']==='timers') throw new HttpError(403,'permission_denied','AI access denied.');
+                if ($entry['scope']==='shopping' || $entry['scope']==='public' || $entry['scope']==='timers' || $entry['scope']==='cooking') throw new HttpError(403,'permission_denied','AI access denied.');
                 $service->authenticate($entry['token'],$entry['household'],$entry['scope']);
                 $source=$entry;
                 $aiJobs->start((string)$c->id,['token'=>$entry['token'],'household'=>$entry['household'],'scope'=>$entry['scope'],'path'=>$m['path'],'body'=>$body],
@@ -143,6 +145,7 @@ $worker->onMessage = static function (TcpConnection $c, string $text) use (&$cli
             if ($body !== null && !str_contains($m['path'], '/shopping-list/photos')) {
                 $broadcast($entry);
                 $scheduleImages($entry,$data);
+                CookingSessions::flushPushes();
             }
         }
     } catch (HttpError $e) {
@@ -153,7 +156,18 @@ $worker->onMessage = static function (TcpConnection $c, string $text) use (&$cli
     catch (Throwable $e) { $send($c, ['type'=>'error','id'=>$id,'status'=>503,'error'=>['message'=>'Data synchronization temporarily unavailable.']]); }
 };
 $worker->onClose = static function (TcpConnection $c) use (&$clients,$aiJobs,$accountJobs): void { $aiJobs->stop((string)$c->id); $accountJobs->disconnect((string)$c->id); unset($clients[$c->id]); };
-$worker->onWorkerStart = static function () use (&$clients,$aiJobs,$accountJobs): void {
+$worker->onWorkerStart = static function () use (&$clients,$aiJobs,$accountJobs,$factory,$send): void {
+    Timer::add(30,static function() use (&$clients,$factory,$send): void {
+        try { $factory()->expireCooking(); } catch (Throwable $e) { /* The next sweep retries. */ }
+        foreach ($clients as $entry) {
+            if (($entry['scope']??'')!=='cooking') continue;
+            try {
+                $service=$factory(); $actor=$service->authenticate($entry['token'],null,'cooking');
+                $send($entry['connection'],['type'=>'snapshot','household_id'=>null,'data'=>$service->snapshot($actor)]);
+            } catch (Throwable $e) { $entry['connection']->close(); }
+        }
+        CookingSessions::flushPushes();
+    });
     Timer::add(0.1,static fn()=>$accountJobs->poll());
     Timer::add(0.1,static fn()=>$aiJobs->poll());
     Timer::add(5, static function () use (&$clients): void {

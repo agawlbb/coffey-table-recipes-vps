@@ -22,7 +22,7 @@ final class DataSocket
             $actor=['household'=>null,'user'=>$user ? (string)$user['id'] : '', 'uid'=>$identity['uid'],'ha'=>false];
         } elseif ($scope === 'public') {
             $actor = ['household'=>null,'user'=>'','ha'=>false];
-        } elseif ($scope === 'timers' || $scope === 'ai') {
+        } elseif ($scope === 'cooking' || $scope === 'timers' || $scope === 'ai') {
             $identity = ($this->verify)($token);
             $q=$this->pdo->prepare('SELECT id,disabled FROM users WHERE firebase_uid=?'); $q->execute([$identity['uid']]);
             $user=$q->fetch(PDO::FETCH_ASSOC);
@@ -43,9 +43,14 @@ final class DataSocket
             'household'=>['shopping'=>$this->shopping->snapshot($actor),
                 'library'=>(new HouseholdSnapshot($this->pdo,new HouseholdService($this->pdo),
                     'https://ctr.coffeybean.com/media/recipes'))->read($actor['user'],$actor['household'])],
+            'cooking'=>(new CookingSessions($this->pdo,$this->push,null,null,true))->snapshot($actor['user']),
             'timers'=>(new TimerSyncService($this->pdo))->list($actor['user']),
             default=>[],
         };
+    }
+
+    public function expireCooking(): void {
+        (new CookingSessions($this->pdo,$this->push,null,null,true))->sweep();
     }
 
     public function handle(string $token, ?string $household, string $path, ?array $body, string $scope='shopping'): array
@@ -58,6 +63,7 @@ final class DataSocket
             if ($body===null && preg_match('#^/recipes/([1-9][0-9]{0,18})$#D',$route,$m)) return ['recipe'=>$recipes->detail('','0',$m[1],true)];
             throw new HttpError(404,'not_found','Public recipe not found.');
         }
+        if ($scope==='cooking') return (new CookingSessions($this->pdo,$this->push,null,null,true))->request($user,$actor['uid'],$route,$body);
         if ($scope==='timers') {
             $timers=new TimerSyncService($this->pdo,$this->push);
             if ($route==='/me/timers') return $body===null ? $timers->list($user) : $timers->change($user,$actor['uid'],$body);
