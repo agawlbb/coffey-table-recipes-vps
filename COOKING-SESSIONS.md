@@ -133,3 +133,19 @@ Merged backend validation passed:
   `-m unittest discover -s tests -p data_websocket.py` (5 tests).
 - No unresolved conflict markers; `git diff --check` passed. Fixtures use
   disposable databases and mocked AI/push transports, not production data.
+
+## Merged backend test deployment — 2026-11-03
+
+At the user's request, compared the hosted backend with merged task commit
+`4d2f1f0fecda60f02e32f982151e18e5602b1be4`. Twelve source/entry/bin files differed,
+so deployed that exact merged implementation with the existing `python3 deploy.py`
+copy-and-restart process. All 68 checked source, bin, association and entry/lock
+files then matched the task source. CPU policy verified `CpuShares=1024` and
+`cpu.max=max 100000`.
+
+Hosted `/health` returned HTTP 200 with `status=ok`; the cooking WebSocket scope
+rejected an invalid token with status 401. These were read-only probes: no live
+sessions, recipe edits, AI requests or notifications were created. Existing
+private configuration and persistent data were preserved, and no database
+maintenance/schema script was rerun. Main remains unchanged. The Android test APK
+is built separately from app commit `4ba9b88ec2de9d476f1d35b6db1688677ff18503`.
