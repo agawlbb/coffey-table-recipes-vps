@@ -168,3 +168,14 @@ Validation: `php tests/cooking_sessions.php`, `php tests/data_socket.php`,
 No production data was used for these tests. Bootstrap/session PHP syntax and
 diff checks passed. Release deployment and app verification are recorded in the
 Flutter repository release evidence.
+
+## 2.7.0 release deployment — 2026-11-03
+
+Accepted cooking sessions, timer ranges and photo optimization are merged into
+canonical main at `7c1cfd3`. Deployed using `python3 deploy.py`; existing GD runtime,
+service restart, backend socket and CPU policy checks passed. Public health returned
+`status:ok`. No inventory maintenance or database changes were rerun.
+
+Integrated backend checks passed: cooking_sessions.php, data_socket.php,
+timer_push.php, recipe_image_optimizer.php (29), http.php (34), and Python
+unittest deployment (4), data websocket (6), cooking websocket (2).
