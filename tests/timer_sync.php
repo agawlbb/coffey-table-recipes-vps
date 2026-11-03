@@ -23,7 +23,7 @@ function rejectTimer(callable $action, int $status): void {
 $pdo=new TimerTestDatabase('sqlite::memory:');
 $pdo->setAttribute(PDO::ATTR_ERRMODE,PDO::ERRMODE_EXCEPTION);
 $pdo->exec('CREATE TABLE timer_devices (installation_id TEXT PRIMARY KEY,user_id TEXT,platform TEXT,push_token TEXT,receive_timers INTEGER,updated_at TEXT);
-CREATE TABLE shared_timers (user_id TEXT,timer_id TEXT,source_device TEXT,title TEXT,deadline_ms INTEGER,cancelled INTEGER,revision INTEGER,last_operation TEXT,updated_at TEXT,PRIMARY KEY(user_id,timer_id));');
+CREATE TABLE shared_timers (user_id TEXT,timer_id TEXT,source_device TEXT,title TEXT,deadline_ms INTEGER,extension_seconds INTEGER NOT NULL DEFAULT 0,cancelled INTEGER,revision INTEGER,last_operation TEXT,updated_at TEXT,PRIMARY KEY(user_id,timer_id));');
 $deliveries=[];
 $service=new TimerSyncService($pdo,static function($target,$timer) use (&$deliveries) { $deliveries[]=[$target,$timer]; return true; });
 $a=str_repeat('a',32); $b=str_repeat('b',32); $c=str_repeat('c',32); $d=str_repeat('d',32);
@@ -60,6 +60,21 @@ rejectTimer(fn()=>$service->device('1',['installation_id'=>$a,'platform'=>'ios',
 foreach (['../escape','',str_repeat('x',161)] as $invalid) rejectTimer(fn()=>TimerSyncService::identifier($invalid,true),422);
 $invalid=$restart; $invalid['deadline_ms']=0; rejectTimer(fn()=>$service->change('1','firebase-val',$invalid),422);
 $invalid=$restart; $invalid['deadline_ms']=(int)floor(microtime(true)*1000)+8*86400000; rejectTimer(fn()=>$service->change('1','firebase-val',$invalid),422);
+// Expired ranges survive reconciliation and their extension is consumed once.
+$range=$body; $range['timer_id']=$a.':range'; $range['operation_id']=str_repeat('5',32); $range['extension_seconds']=120;
+$range['deadline_ms']=(int)floor(microtime(true)*1000)+10000;
+$service->change('1','firebase-val',$range);
+$pdo->prepare('UPDATE shared_timers SET deadline_ms=1 WHERE timer_id=?')->execute([$range['timer_id']]);
+expectTimer(count(array_filter($service->list('1')['timers'],fn($r)=>$r['timer_id']===$range['timer_id'] && $r['extension_seconds']===120))===1,'Expired range remains available');
+$extend=$range; $extend['extend']=true; $extend['extension_seconds']=0; $extend['revision']=1; $extend['operation_id']=str_repeat('6',32);
+$extend['deadline_ms']=(int)floor(microtime(true)*1000)+120000;
+$extended=$service->change('1','firebase-val',$extend);
+expectTimer($extended['timer']['extension_seconds']===0 && $extended['timer']['revision']===2,'Extension consumed');
+expectTimer($service->change('1','firebase-val',$extend)['timer']===$extended['timer'],'Extension retry is idempotent');
+$duplicate=$extend; $duplicate['revision']=2; $duplicate['operation_id']=str_repeat('7',32);
+rejectTimer(fn()=>$service->change('1','firebase-val',$duplicate),409);
+$duplicate['revision']=1; rejectTimer(fn()=>$service->change('1','firebase-val',$duplicate),409);
+$pdo->prepare('DELETE FROM shared_timers WHERE timer_id=?')->execute([$range['timer_id']]);
 // Rebinding an installation after an account switch cannot expose old account state.
 $register('2',$a,false);
 rejectTimer(fn()=>$service->change('1','firebase-val',$restart),409);

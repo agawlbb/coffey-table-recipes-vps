@@ -212,13 +212,16 @@ final class RecipeEditorService
                 $this->validationContext='Action '.($actionPosition+1).' ('.mb_substr((string)($row['label'] ?? ''),0,100).'): ';
                 $step = $steps[(string)($row['step_id'] ?? '')] ?? null;
                 if ($step === null) $this->invalid('Every action must belong to a step.');
-                $values = $this->fields($row, ['action_type'=>'!enum:timer,appliance_temperature,internal_temperature,rest,reminder','label'=>'300','duration_seconds'=>'integer','temperature_value'=>'number','temperature_unit'=>'enum:C,F','appliance'=>'80']);
+                $previous=$existing['actions'][(string)($row['id']??'')]??null;
+                if (!array_key_exists('duration_max_seconds',$row) && $previous && ($row['action_type']??null)===$previous['action_type'] && (string)($row['duration_seconds']??'')===(string)$previous['duration_seconds']) $row['duration_max_seconds']=$previous['duration_max_seconds']??null;
+                $values = $this->fields($row, ['action_type'=>'!enum:timer,appliance_temperature,internal_temperature,rest,reminder','label'=>'300','duration_seconds'=>'integer','duration_max_seconds'=>'integer','temperature_value'=>'number','temperature_unit'=>'enum:C,F','appliance'=>'80']);
                 // Also repair already reviewed imports that described heat without a numeric target.
                 if ($values['action_type']==='appliance_temperature' && $values['temperature_value']===null && trim((string)($values['label'] ?? ''))!=='') {
                     $values['action_type']='reminder';
                     $values['temperature_unit']=null;
                 }
                 if (in_array($values['action_type'], ['timer','rest'], true) && (int)($values['duration_seconds'] ?? 0) <= 0) $this->invalid('Timers and rests need a positive duration.');
+                if ($values['duration_max_seconds']!==null && (!in_array($values['action_type'],['timer','rest'],true) || $values['duration_seconds']===null || (int)$values['duration_max_seconds']<(int)$values['duration_seconds'])) $this->invalid('The maximum timer duration must be at least its minimum.');
                 if (($values['temperature_value'] === null) !== ($values['temperature_unit'] === null) || (in_array($values['action_type'], ['appliance_temperature','internal_temperature'], true) && $values['temperature_value'] === null)) $this->invalid('Temperature actions need a temperature and unit.');
                 $positions[$step] = ($positions[$step] ?? 0)+1;
                 $this->insert('recipe_step_actions', $base + $this->ownedId($row,$existing['actions'],$seen) + ['step_id'=>$step,'position'=>$positions[$step]] + $values);

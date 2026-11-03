@@ -91,7 +91,7 @@ final class RecipeVariationService
             foreach ($source['actions'] ?? [] as $action) {
                 if ((string)($action['step_id'] ?? '') !== (string)$step['id']) continue;
                 $original['steps'][$index]['actions'][] = array_intersect_key($action,array_flip([
-                    'action_type','label','duration_seconds','temperature_value','temperature_unit','appliance',
+                    'action_type','label','duration_seconds','duration_max_seconds','temperature_value','temperature_unit','appliance',
                 ]));
             }
         }

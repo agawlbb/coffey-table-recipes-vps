@@ -77,7 +77,7 @@ final class CookingSessions
     }
     private function end(array &$s,int $now): void {
         $s['ended_at']=$now; ++$s['revision'];
-        foreach ($s['timers'] as &$timer) { $timer['cancelled']=true; ++$timer['revision']; }
+        foreach ($s['timers'] as &$timer) { $timer['cancelled']=true; $timer['extension_seconds']=0; ++$timer['revision']; }
         unset($timer);
     }
     private function id(mixed $id): string { return TimerSyncService::identifier($id); }
@@ -138,9 +138,16 @@ final class CookingSessions
                     $old=$s['timers'][$key]??null;
                     if (($body['revision']??null)!==($old['revision']??0)) throw new HttpError(409,'timer_conflict','This timer changed on another device. Try again.');
                     $cancel=$body['cancelled']??null; $deadline=$body['deadline_ms']??null;
-                    if (!is_bool($cancel) || (!$cancel && (!is_int($deadline) || $deadline<=$now || $deadline>$now+7*86400000))) throw new HttpError(422,'invalid_timer','Choose a timer between now and seven days from now.');
+                    $extension=$body['extension_seconds']??0; $extend=$body['extend']??false;
+                    if(!is_bool($extend) || !is_int($extension) || $extension<0 || $extension>604800 || ($extend && $cancel)) throw new HttpError(422,'invalid_timer','Invalid timer extension.');
+                    if (!is_bool($cancel) || (!$cancel && (!is_int($deadline) || ($deadline<=$now && ($extension<=0 || $extend || $deadline<$now-7*86400000)) || $deadline>$now+7*86400000))) throw new HttpError(422,'invalid_timer','Choose a timer between now and seven days from now.');
+                    if($extend) {
+                        if(!$old || $old['cancelled'] || ($old['extension_seconds']??0)<=0 || $old['deadline_ms']>$now || $deadline>$now+$old['extension_seconds']*1000) throw new HttpError(409,'timer_extension_unavailable','The remaining time is no longer available.');
+                        $extension=0;
+                    }
+                    if($cancel) $extension=0;
                     $s['timers'][$key]=['timer_id'=>'session:'.$id.':'.$key,'session_id'=>$id,'action_id'=>$key,'source_device'=>'session',
-                        'deadline_ms'=>$cancel ? ($old['deadline_ms']??$now) : $deadline,'cancelled'=>$cancel,'revision'=>($old['revision']??0)+1,
+                        'deadline_ms'=>$cancel ? ($old['deadline_ms']??$now) : $deadline,'cancelled'=>$cancel,'extension_seconds'=>$extension,'revision'=>($old['revision']??0)+1,
                         'title'=>mb_substr($s['recipe']['title'].' · '.(array_values(array_filter($s['recipe']['actions'],fn($a)=>(string)$a['id']===$key))[0]['label']??'Cooking timer'),0,300)];
                     // Start delivery is WebSocket-only. Updates to an existing alarm need background delivery.
                     $push=$old!==null || $cancel;

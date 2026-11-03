@@ -35,8 +35,20 @@ foreach (['10 to 15 minutes','10–15 minutes','10-15 minutes','10 minutes to 15
     $ranged['recipe']['steps'][0]['instruction']='Cook for '.$range.'.';
     $ranged['recipe']['steps'][0]['actions']=[['action_type'=>'timer','duration_seconds'=>900],['action_type'=>'timer','duration_seconds'=>600]];
     $actions=RecipeImportService::draft($ranged)['recipe']['actions'];
-    aiExpect(count($actions)===1 && $actions[0]['duration_seconds']===600,'Wrong range timer: '.$range);
+    aiExpect(count($actions)===1 && $actions[0]['duration_seconds']===600 && $actions[0]['duration_max_seconds']===900,'Wrong range timer: '.$range);
 }
+foreach (['Cook 3 minutes, check, add up to 2 minutes.','Cook for 3 minutes, check, continue cooking for up to 2 more minutes.'] as $instruction) {
+    $ranged=$input; $ranged['recipe']['steps'][0]=['instruction'=>$instruction,'actions'=>[['action_type'=>'timer','duration_seconds'=>180],['action_type'=>'timer','duration_seconds'=>120]]];
+    $actions=RecipeImportService::draft($ranged)['recipe']['actions'];
+    aiExpect(count($actions)===1 && $actions[0]['duration_seconds']===180 && $actions[0]['duration_max_seconds']===300,'Conditional extension not normalized');
+}
+$ranged=$input; $ranged['recipe']['steps'][0]=['instruction'=>'Cook 3 minutes, flip, then cook 2 minutes.','actions'=>[['action_type'=>'timer','duration_seconds'=>180],['action_type'=>'timer','duration_seconds'=>120]]];
+$actions=RecipeImportService::draft($ranged)['recipe']['actions'];
+aiExpect(count($actions)===2 && $actions[0]['duration_max_seconds']===null,'Separate stages combined');
+$ranged['recipe']['steps'][0]=['instruction'=>'Simmer 3 minutes.','actions'=>[['action_type'=>'timer','duration_seconds'=>180,'duration_max_seconds'=>300]]];
+aiExpect(RecipeImportService::draft($ranged)['recipe']['actions'][0]['duration_max_seconds']===null,'Invented upper bound retained');
+$fraction=TimerRanges::extract('Simmer 3-3 1/2 hours.');
+aiExpect($fraction[0]['min']===10800 && $fraction[0]['max']===12600,'Fractional hours lost');
 $selfCategory=$input;
 $selfCategory['recipe']['categories']=[['label'=>' Main Dish ','parent_label'=>'main dish']];
 aiReject(fn()=>RecipeImportService::draft($selfCategory,[['id'=>'10','label'=>'Main Dish','parent_label'=>null]]),502);

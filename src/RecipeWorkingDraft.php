@@ -7,7 +7,7 @@ final class RecipeWorkingDraft {
     private const META=['title','description','original_language','measurement_system','yield_text','servings','prep_minutes','cook_minutes','total_minutes','notes','variation_label','change_description'];
     private const INGREDIENT=['original_text','ingredient_name','group_title','quantity_text','quantity_decimal','quantity_numerator','quantity_denominator','quantity_max_decimal','original_unit','unit_code','preparation','is_optional','is_main_ingredient','scale_quantity'];
     private const STEP=['instruction','section_title','actions'];
-    private const ACTION=['action_type','label','duration_seconds','temperature_value','temperature_unit','appliance'];
+    private const ACTION=['action_type','label','duration_seconds','duration_max_seconds','temperature_value','temperature_unit','appliance'];
 
     private static function ordered(array $row,array $fields): array { $result=[];foreach($fields as $field)if(array_key_exists($field,$row))$result[$field]=$row[$field];return $result; }
 
@@ -92,6 +92,7 @@ final class RecipeWorkingDraft {
                     $actions=$row['actions']??[];if(!is_array($actions) || !array_is_list($actions) || count($actions)>20)self::invalid();
                     foreach($actions as $a) {
                         if(!is_array($a) || array_diff(array_keys($a),self::ACTION) || !in_array($a['action_type']??null,['timer','appliance_temperature'],true))self::invalid();
+                        if(isset($a['duration_max_seconds']) && ($a['action_type']!=='timer' || !is_int($a['duration_max_seconds']) || $a['duration_max_seconds']<($a['duration_seconds']??1) || $a['duration_max_seconds']>1000000000))self::invalid();
                         if($a['action_type']==='timer' && (!is_numeric($a['duration_seconds']??null) || (float)$a['duration_seconds']<=0 || (float)$a['duration_seconds']>1000000000 || floor((float)$a['duration_seconds'])!=(float)$a['duration_seconds']))self::invalid();
                         if($a['action_type']==='appliance_temperature' && (!is_numeric($a['temperature_value']??null) || !is_finite((float)$a['temperature_value']) || !in_array($a['temperature_unit']??null,['C','F'],true)))self::invalid();
                     }

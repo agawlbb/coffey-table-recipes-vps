@@ -49,14 +49,14 @@ final class TimerSyncService
         // Cancellations remain as tombstones so a missed cancellation is reconciled.
         // Retain recent cancellation tombstones even after the deadline so a
         // missed stop can silence an already elapsed/ringing local alarm.
-        $q = $this->pdo->prepare('SELECT timer_id,source_device,title,deadline_ms,cancelled,revision FROM shared_timers WHERE user_id=? AND (deadline_ms>? OR (cancelled=1 AND updated_at>DATE_SUB(CURRENT_TIMESTAMP, INTERVAL 7 DAY))) ORDER BY timer_id');
+        $q = $this->pdo->prepare('SELECT timer_id,source_device,title,deadline_ms,extension_seconds,cancelled,revision FROM shared_timers WHERE user_id=? AND (deadline_ms>? OR ((cancelled=1 OR extension_seconds>0) AND updated_at>DATE_SUB(CURRENT_TIMESTAMP, INTERVAL 7 DAY))) ORDER BY timer_id');
         $q->execute([$user,(int)floor(microtime(true)*1000)]);
         return ['timers'=>array_map([self::class,'row'],$q->fetchAll(PDO::FETCH_ASSOC))];
     }
 
     private static function row(array $row): array
     {
-        foreach (['deadline_ms','revision'] as $key) $row[$key]=(int)$row[$key];
+        foreach (['deadline_ms','revision','extension_seconds'] as $key) $row[$key]=(int)$row[$key];
         $row['cancelled']=(bool)$row['cancelled'];
         return $row;
     }
@@ -68,9 +68,12 @@ final class TimerSyncService
         $operation=self::identifier($body['operation_id']??null);
         $cancel=$body['cancelled']??false;
         $expected=$body['revision']??0;
+        $extension=$body['extension_seconds']??0;
+        $extend=$body['extend']??false;
+        if (!is_bool($extend) || !is_int($extension) || $extension<0 || $extension>604800 || ($extend && $cancel)) throw new HttpError(422,'invalid_timer','Invalid timer extension.');
         if (!is_bool($cancel) || !is_int($expected) || $expected<0) throw new HttpError(422,'invalid_timer','Invalid timer state.');
         $now=(int)floor(microtime(true)*1000);
-        if (!$cancel && (!is_int($body['deadline_ms']??null) || $body['deadline_ms']<=$now || $body['deadline_ms']>$now+7*86400000
+        if (!$cancel && (!is_int($body['deadline_ms']??null) || ($body['deadline_ms']<=$now && ($extension<=0 || $extend || $body['deadline_ms']<$now-7*86400000)) || $body['deadline_ms']>$now+7*86400000
             || !is_string($body['title']??null) || trim($body['title'])==='' || mb_strlen($body['title'])>300)) {
             throw new HttpError(422,'invalid_timer','Choose a timer between now and seven days from now.');
         }
@@ -84,27 +87,32 @@ final class TimerSyncService
             $q->execute([$user,$id]); $old=$q->fetch(PDO::FETCH_ASSOC);
             if ($old && $old['last_operation']===$operation) {
                 $revision=(int)$old['revision']; $title=$old['title']; $deadline=(int)$old['deadline_ms'];
-                $source=$old['source_device']; $cancel=(bool)$old['cancelled'];
+                $source=$old['source_device']; $cancel=(bool)$old['cancelled']; $extension=(int)$old['extension_seconds'];
             } else {
             if (($old ? (int)$old['revision'] : 0)!==$expected) throw new HttpError(409,'timer_conflict','This timer changed on another device. Reopen the timers and try again.');
             if ($cancel && !$old) throw new HttpError(404,'timer_missing','Timer not found.');
+            if ($extend) {
+                if (!$old || (bool)$old['cancelled'] || (int)$old['extension_seconds']<=0 || (int)$old['deadline_ms']>$now || $body['deadline_ms']>$now+(int)$old['extension_seconds']*1000) throw new HttpError(409,'timer_extension_unavailable','The remaining time is no longer available.');
+                $extension=0;
+            }
+            if ($cancel) $extension=0;
             $revision=$expected+1;
             $title=$cancel ? $old['title'] : trim($body['title']);
             $deadline=$cancel ? (int)$old['deadline_ms'] : $body['deadline_ms'];
             $source=$old ? $old['source_device'] : $device;
             if ($old) {
-                $this->pdo->prepare('UPDATE shared_timers SET title=?,deadline_ms=?,cancelled=?,revision=?,last_operation=?,updated_at=CURRENT_TIMESTAMP WHERE user_id=? AND timer_id=?')
-                    ->execute([$title,$deadline,(int)$cancel,$revision,$operation,$user,$id]);
+                $this->pdo->prepare('UPDATE shared_timers SET title=?,deadline_ms=?,extension_seconds=?,cancelled=?,revision=?,last_operation=?,updated_at=CURRENT_TIMESTAMP WHERE user_id=? AND timer_id=?')
+                    ->execute([$title,$deadline,$extension,(int)$cancel,$revision,$operation,$user,$id]);
             } else {
                 // New timers are namespaced by their origin installation.
                 if (!str_starts_with($id,$device.':')) throw new HttpError(422,'invalid_timer_id','Invalid timer origin.');
-                $this->pdo->prepare('INSERT INTO shared_timers (user_id,timer_id,source_device,title,deadline_ms,cancelled,revision,last_operation,updated_at) VALUES (?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP)')
-                    ->execute([$user,$id,$source,$title,$deadline,(int)$cancel,$revision,$operation]);
+                $this->pdo->prepare('INSERT INTO shared_timers (user_id,timer_id,source_device,title,deadline_ms,extension_seconds,cancelled,revision,last_operation,updated_at) VALUES (?,?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP)')
+                    ->execute([$user,$id,$source,$title,$deadline,$extension,(int)$cancel,$revision,$operation]);
             }
             }
             $this->pdo->commit();
         } catch (Throwable $error) { if ($this->pdo->inTransaction()) $this->pdo->rollBack(); throw $error; }
-        $timer=['timer_id'=>$id,'source_device'=>$source,'title'=>$title,'deadline_ms'=>$deadline,'cancelled'=>$cancel,'revision'=>$revision];
+        $timer=['timer_id'=>$id,'source_device'=>$source,'title'=>$title,'deadline_ms'=>$deadline,'extension_seconds'=>$extension,'cancelled'=>$cancel,'revision'=>$revision];
         $q=$this->pdo->prepare('SELECT installation_id,push_token,platform FROM timer_devices WHERE user_id=? AND installation_id<>? AND (receive_timers=1 OR installation_id=?) AND push_token IS NOT NULL AND updated_at>DATE_SUB(CURRENT_TIMESTAMP, INTERVAL 60 DAY) LIMIT 20');
         $q->execute([$user,$device,$source]); $failed=false; $started=microtime(true);
         foreach ($q->fetchAll(PDO::FETCH_ASSOC) as $target) {

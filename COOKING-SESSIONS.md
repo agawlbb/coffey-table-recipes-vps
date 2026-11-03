@@ -100,3 +100,36 @@ Read-only smoke checks passed: hosted public configuration returned HTTP 200;
 the hosted cooking WebSocket scope recognized the request and rejected an invalid
 token with HTTP-equivalent status 401. No live session, production test recipe,
 notification, app package or release was created. Main remains unmerged.
+
+## Timer-range integration — 2026-11-03
+
+Merged `task/timer-ranges` into `task/cooking-sessions`: app source `4c4f2bb`
+and companion backend source `b6f8c1d`. Both task histories are preserved; main
+is unchanged. The retired account-wide Flutter timer coordinator stays removed.
+
+Range timers still start at the minimum and offer the remainder once. Session
+snapshots, durable local timer operations and silent native updates now preserve
+`extension_seconds`; extension operations carry their consumption flag through
+the session endpoint. Server revisions and operation IDs prevent two devices
+from consuming the same remainder. Manual timer changes/cancellation clear the
+remainder. Native session/account guards and server-clock adjustment are retained.
+Expired unused ranges can be restored without replaying an alarm. Web cooking
+uses the same session extension rules.
+
+This integration changes source only. It does not run database maintenance,
+build packages, deploy either app/backend, or integrate into main. Earlier hosted
+publication records above describe their respective source revisions.
+
+Merged backend validation passed:
+
+- PHP syntax checks for `bootstrap.php` and `src/CookingSessions.php`.
+- `php tests/cooking_sessions.php`, `php tests/data_socket.php`,
+  `php tests/timer_sync.php`, and `php tests/timer_push.php`.
+- `php tests/recipe_ai.php` (299 checks), `php tests/recipe_working_draft.php`
+  (37), `php tests/recipe_chat.php` (60), `php tests/recipe_variation.php` (92),
+  and `php tests/timer_range_inventory.php`.
+- Using `/home/debian/projects/coffey-table-recipes-vps/.venv/bin/python`,
+  `-m unittest discover -s tests -p cooking_websocket.py` (2 tests) and
+  `-m unittest discover -s tests -p data_websocket.py` (5 tests).
+- No unresolved conflict markers; `git diff --check` passed. Fixtures use
+  disposable databases and mocked AI/push transports, not production data.

@@ -56,6 +56,24 @@ try {
  $now+=3500000;expectCooking(count($service->snapshot('1')['sessions'])===1,'Reopening resets expiry');
  $service->request('1','alice','/me/cooking-sessions/'.$id2.'/end',['installation_id'=>$a,'operation_id'=>bin2hex(random_bytes(16))]);
  expectCooking($service->snapshot('1')['sessions']===[],'Explicit end removes session');
+ // Range metadata survives session snapshots, and only one device can consume it.
+ $rangeId=str_repeat('3',32);$create['session_id']=$rangeId;$create['operation_id']=bin2hex(random_bytes(16));
+ $service->request('1','alice','/me/cooking-sessions',$create);
+ $range=function($action,$body=[],$device=null)use($service,$rangeId,$a){return $service->request('1','alice','/me/cooking-sessions/'.$rangeId.'/'.$action,$body+['installation_id'=>$device??$a,'operation_id'=>bin2hex(random_bytes(16))]);};
+ $range('join',[],$b);
+ $range('timer',['action_id'=>'10','deadline_ms'=>$now+60000,'extension_seconds'=>120,'cancelled'=>false,'revision'=>0]);
+ $now+=60001;
+ $snapshot=$service->snapshot('1')['sessions'][0];
+ expectCooking($snapshot['timers'][0]['extension_seconds']===120,'Expired session range retains its unused extension');
+ $extend=['action_id'=>'10','deadline_ms'=>$now+120000,'extension_seconds'=>0,'extend'=>true,'cancelled'=>false,'revision'=>1,'operation_id'=>bin2hex(random_bytes(16))];
+ $extended=$range('timer',$extend)['session']['timers'][0];
+ expectCooking($extended['extension_seconds']===0 && $extended['revision']===2,'Session extension consumed once');
+ expectCooking($range('timer',$extend)['session']['timers'][0]===$extended,'Extension retry is idempotent');
+ $competing=$extend;$competing['operation_id']=bin2hex(random_bytes(16));
+ rejectCooking(fn()=>$range('timer',$competing,$b),409);
+ $competing['revision']=2;rejectCooking(fn()=>$range('timer',$competing,$b),409);
+ $range('timer',['action_id'=>'10','cancelled'=>true,'revision'=>2]);
+ expectCooking($service->snapshot('1')['sessions'][0]['timers'][0]['extension_seconds']===0,'Cancellation cannot restore the range');
  // Access is rechecked after household removal.
  $pdo->exec('DELETE FROM household_memberships WHERE user_id=2');expectCooking($service->snapshot('2')['sessions']===[] && $service->snapshot('2')['ended_sessions']===[],'Removed members lose access');
  echo "Cooking sessions: discovery, invitation, joins, steps, timers, replay, conflicts, expiry and membership passed.\n";

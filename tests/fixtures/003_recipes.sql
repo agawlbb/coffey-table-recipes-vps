@@ -98,6 +98,7 @@ CREATE TABLE IF NOT EXISTS recipe_step_actions (
     action_type ENUM('timer', 'appliance_temperature', 'internal_temperature', 'rest', 'reminder') NOT NULL,
     label VARCHAR(300) NULL,
     duration_seconds INT UNSIGNED NULL,
+    duration_max_seconds INT UNSIGNED NULL,
     temperature_value DECIMAL(10,4) NULL,
     temperature_unit ENUM('C', 'F') NULL,
     appliance VARCHAR(80) NULL,

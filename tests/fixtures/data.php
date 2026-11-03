@@ -61,7 +61,7 @@ CREATE TABLE recipe_save_receipts(household_id INTEGER,user_id INTEGER,save_id T
 ALTER TABLE meal_plan_entries ADD COLUMN restaurant_id TEXT;
 ALTER TABLE meal_plan_entries ADD COLUMN restaurant_logo_reference TEXT;
 CREATE TABLE timer_devices(installation_id TEXT PRIMARY KEY,user_id TEXT,platform TEXT,push_token TEXT,receive_timers INTEGER,updated_at TEXT);
-CREATE TABLE shared_timers(user_id TEXT,timer_id TEXT,source_device TEXT,title TEXT,deadline_ms INTEGER,cancelled INTEGER,revision INTEGER,last_operation TEXT,updated_at TEXT,PRIMARY KEY(user_id,timer_id));");
+CREATE TABLE shared_timers(user_id TEXT,timer_id TEXT,source_device TEXT,title TEXT,deadline_ms INTEGER,extension_seconds INTEGER NOT NULL DEFAULT 0,cancelled INTEGER,revision INTEGER,last_operation TEXT,updated_at TEXT,PRIMARY KEY(user_id,timer_id));");
 $verify=static function(string $token): array {
     if (!in_array($token,['alice','bob','disabled'],true)) throw new HttpError(401,'invalid_token','Invalid token.');
     return ['uid'=>$token];
