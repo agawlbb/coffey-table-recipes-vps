@@ -87,6 +87,19 @@ try {
  expectCooking($stopped['cancelled'] && $stopped['extension_seconds']===0,'Notification Stop clears timer and remainder');
  $native(['action_id'=>'10','cancelled'=>false,'deadline_ms'=>$now+300000,'revision'=>3]);
  rejectCooking(fn()=>$native(['action_id'=>'10','cancelled'=>true,'revision'=>0,'expected_deadline_ms'=>$extended['deadline_ms']]),409);
+ // The menu can end a discoverable session without joining the current device.
+ foreach ([['1',$b],['2',$c]] as $index=>[$ender,$device]) {
+  $swipeId=str_repeat((string)($index+5),32);$create['session_id']=$swipeId;$create['operation_id']=bin2hex(random_bytes(16));
+  $service->request('1','alice','/me/cooking-sessions',$create);
+  $swipe=function($action,$body=[],$user='1',$device=null)use($service,$swipeId,$a){return $service->request($user,$user==='1'?'alice':'bob','/me/cooking-sessions/'.$swipeId.'/'.$action,$body+['installation_id'=>$device??$a,'operation_id'=>bin2hex(random_bytes(16))]);};
+  rejectCooking(fn()=>$swipe('end',[],'2',$c),404);
+  $swipe('share',['person_id'=>'20']);
+  rejectCooking(fn()=>$swipe('timer',['action_id'=>'10','cancelled'=>true,'revision'=>0],$ender,$device),409);
+  $swipe('timer',['action_id'=>'10','deadline_ms'=>$now+60000,'cancelled'=>false,'revision'=>0]);
+  $ended=$swipe('end',[],$ender,$device)['session'];
+  expectCooking($ended['ended_at']!==null && $ended['timers'][0]['cancelled'],'Unjoined authorized device ends session and cancels timers');
+  expectCooking(!in_array($device,$ended['joined_devices'],true),'Ending does not join or mirror alarms');
+ }
  // Access is rechecked after household removal.
  $pdo->exec('DELETE FROM household_memberships WHERE user_id=2');expectCooking($service->snapshot('2')['sessions']===[] && $service->snapshot('2')['ended_sessions']===[],'Removed members lose access');
  echo "Cooking sessions: discovery, invitation, joins, steps, timers, replay, conflicts, expiry and membership passed.\n";

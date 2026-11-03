@@ -120,7 +120,7 @@ final class CookingSessions
             if ($action==='create' || $action==='join') {
                 $s['devices'][$device]=['user'=>$user,'open_until'=>$now+60000]; $s['last_open']=$now;
             } else {
-                if ($action!=='share') $this->joined($s,$user,$device);
+                if (!in_array($action,['share','end'],true)) $this->joined($s,$user,$device);
                 if ($action==='presence') {
                     if (!is_bool($body['open']??null)) throw new HttpError(422,'invalid_presence','Invalid cooking presence.');
                     $s['devices'][$device]['open_until']=$body['open'] ? $now+60000 : $now;

@@ -179,3 +179,18 @@ service restart, backend socket and CPU policy checks passed. Public health retu
 Integrated backend checks passed: cooking_sessions.php, data_socket.php,
 timer_push.php, recipe_image_optimizer.php (29), http.php (34), and Python
 unittest deployment (4), data websocket (6), cooking websocket (2).
+
+
+## Menu swipe ending — 2026-11-03
+
+Task `task/cooking-session-swipe`, based on main `adc5d60`, supports the companion
+app task `task/cooking-ui-controls`. An authorized account can end a discoverable
+session from its menu without joining that device or scheduling its alarms.
+Membership/invitation access checks remain mandatory; timer, step and presence
+mutations still require a joined device. Existing end cancellation and push/
+WebSocket delivery are unchanged.
+
+`php tests/cooking_sessions.php`, `php tests/data_socket.php` and
+`php -l src/CookingSessions.php` passed. Added cases cover an unjoined device for
+the same account, an invited account, inaccessible-account rejection, timer
+mutation rejection before joining, cancellation, and no implicit join.
