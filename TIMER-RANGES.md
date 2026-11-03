@@ -74,3 +74,24 @@ blindly overwrite later user changes.
 - Changed PHP syntax checks and `git diff --check` passed.
 
 No main integration, app build, release or hosted Flutter deployment is included.
+
+## Backend publication and deployment
+
+Backend source `f16cc62` was pushed to `origin/task/timer-ranges` and deployed with
+the existing source-copy deployer. Before deployment, installed source matched
+fetched main, so no independently deployed Cooking sessions source was replaced.
+After deployment, all 65 checked source/bin/entry/lock files matched this task.
+Persistent maintenance snapshots remain present outside replaced code. The backend
+is running with zero restarts, CPU shares 1024 and unlimited `cpu.max`; public
+HTTPS `/health` returned status `ok`. No runtime image was rebuilt.
+
+Five real WebSocket tests passed with
+`/home/debian/projects/coffey-table-recipes-vps/.venv/bin/python -m unittest discover -s tests -p data_websocket.py`.
+Final hosted checks confirmed 64 ranged actions across 30 recipes, all 526 active
+instructions unchanged, and unchanged action records in the other 39 recipes.
+The separate app branch passed affected-file analysis and 102 distinct focused
+Flutter tests; see its `docs/timer-ranges.md` for exact commands and the interrupted
+initial combined run. Device/native alarm execution remains unverified.
+
+Both task branches remain pending explicit main-integration approval. The backend
+is deployed, while the Flutter app requires a separately authorized build/release.
