@@ -139,3 +139,52 @@ class DataWireTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(await response.read(),b'')
         async with self.session.get(f'http://127.0.0.1:{self.media_port}/private/database.json') as response:
             self.assertEqual(response.status, 404)
+
+    async def test_large_upload_is_optimized_in_background_without_changing_recipe(self):
+        import asyncio
+        import base64
+        import struct
+        import zlib
+        from pathlib import Path
+
+        def chunk(kind, data):
+            return struct.pack('>I', len(data)) + kind + data + struct.pack('>I', zlib.crc32(kind + data))
+
+        width, height = 2000, 1000
+        image = (b'\x89PNG\r\n\x1a\n'
+                 + chunk(b'IHDR', struct.pack('>IIBBBBB', width, height, 8, 2, 0, 0, 0))
+                 + chunk(b'IDAT', zlib.compress((b'\0' + b'\xc0\x50\x20' * width) * height))
+                 + chunk(b'IEND', b''))
+        await self.auth(self.app)
+        body = dict(title='Background photo', source_type='website', original_language='en',
+                    measurement_system='unspecified', client_save_id='e'*32,
+                    groups=[], ingredients=[], steps=[], actions=[], tags=[], category_assignments=[], pairings=[],
+                    photos=[dict(id='new-photo', is_cover=True, image_base64=base64.b64encode(image).decode())])
+        result = await self.request(self.app, '/households/1/recipes', body)
+        self.assertEqual(result['type'], 'response', result)
+        photo = result['data']['recipe']['photos'][0]
+        name = photo['source_url'].split('/')[-1]
+        original = Path(self.runtime) / 'state/media/recipes' / name
+        self.assertEqual(original.read_bytes(), image)
+        await self.message(self.app)  # Committed snapshot, independent of image processing.
+        await self.app.send_json(dict(v=1, type='ping'))
+        self.assertEqual((await self.message(self.app))['type'], 'pong')
+        # Production's separate image worker discovers uploads within 30 seconds.
+        for _ in range(80):
+            async with self.session.get(f'http://127.0.0.1:{self.media_port}/media/recipes/' + name) as response:
+                self.assertEqual(response.status, 200)
+                content = await response.read()
+                if response.headers.get('Content-Type') == 'image/webp':
+                    self.assertLess(len(content), len(image))
+                    self.assertEqual(content[:4], b'RIFF')
+                    break
+            await asyncio.sleep(.5)
+        else:
+            self.fail('Background worker did not optimize the uploaded image')
+        self.assertEqual(original.read_bytes(), image)
+        read = await self.request(self.app, '/households/1/recipes/' + result['data']['recipe']['id'])
+        self.assertEqual(read['data']['recipe']['photos'][0], photo)
+        async with self.session.head(f'http://127.0.0.1:{self.media_port}/media/recipes/' + name) as response:
+            self.assertEqual(response.headers['Content-Type'], 'image/webp')
+            self.assertEqual(int(response.headers['Content-Length']), len(content))
+            self.assertEqual(await response.read(), b'')

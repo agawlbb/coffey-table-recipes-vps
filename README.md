@@ -67,6 +67,12 @@ Keep memory/swap, process, security and restart settings unchanged.
 
 Docker/Compose, the existing Caddy route, running VPS MariaDB and its external
 `database-backend` network, private database/Firebase configuration
+Large photos are optimized by a separate background process after upload, with
+originals retained and existing URLs preserved. See
+[PHOTO-OPTIMIZATION.md](PHOTO-OPTIMIZATION.md) for the runtime GD/EXIF setup,
+batch command, processing limits and validation.
+
+Docker/Compose, the existing Caddy route, private database/Firebase configuration
 and locked Composer dependencies are setup prerequisites. Runtime image changes
 are explicit: `sudo docker build -t ctr-backend:latest .`. Google Firebase uses
 the existing project. No separate VPS Firebase project is needed.

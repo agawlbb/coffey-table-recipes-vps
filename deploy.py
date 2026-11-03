@@ -38,6 +38,12 @@ def deploy():
         if not (ROOT / name).exists():
             raise RuntimeError('Incomplete source checkout: ' + name)
 
+    # Fail before stopping the live service if its one-time GD setup is missing.
+    run('sudo', '-n', 'docker', 'run', '--rm', '--network', 'none',
+        '--read-only', '--cap-drop=ALL', '--security-opt=no-new-privileges',
+        'ctr-backend:latest', 'php', '-r',
+        "exit(function_exists('imagewebp') && function_exists('exif_read_data') ? 0 : 1);")
+
     compose = str(ROOT / 'compose.yaml')
     run('sudo', '-n', 'install', '-d', '-m', '755', '-o', '1000', '-g', '1000', str(CODE))
     run('sudo', '-n', 'docker', 'compose', '-f', compose, 'stop', 'backend')

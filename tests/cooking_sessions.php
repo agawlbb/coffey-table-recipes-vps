@@ -74,6 +74,19 @@ try {
  $competing['revision']=2;rejectCooking(fn()=>$range('timer',$competing,$b),409);
  $range('timer',['action_id'=>'10','cancelled'=>true,'revision'=>2]);
  expectCooking($service->snapshot('1')['sessions'][0]['timers'][0]['extension_seconds']===0,'Cancellation cannot restore the range');
+ // Notification actions bind to the old deadline, not a possibly unacknowledged local revision.
+ $nativeId=str_repeat('4',32);$create['session_id']=$nativeId;$create['operation_id']=bin2hex(random_bytes(16));
+ $service->request('1','alice','/me/cooking-sessions',$create);
+ $native=function($body)use($service,$nativeId,$a){return $service->request('1','alice','/me/cooking-sessions/'.$nativeId.'/timer',$body+['installation_id'=>$a,'operation_id'=>bin2hex(random_bytes(16))]);};
+ $minimum=$now+1000;
+ $native(['action_id'=>'10','deadline_ms'=>$minimum,'extension_seconds'=>120,'cancelled'=>false,'revision'=>0]);$now+=1001;
+ $extended=$native(['action_id'=>'10','deadline_ms'=>$now+120000,'extension_seconds'=>0,'extend'=>true,'cancelled'=>false,'revision'=>0,'expected_deadline_ms'=>$minimum])['session']['timers'][0];
+ expectCooking($extended['revision']===2 && $extended['extension_seconds']===0,'Native extension survives an unacknowledged start');
+ rejectCooking(fn()=>$native(['action_id'=>'10','deadline_ms'=>$now+120000,'extension_seconds'=>0,'extend'=>true,'cancelled'=>false,'revision'=>0,'expected_deadline_ms'=>$minimum]),409);
+ $stopped=$native(['action_id'=>'10','cancelled'=>true,'revision'=>0,'expected_deadline_ms'=>$extended['deadline_ms']])['session']['timers'][0];
+ expectCooking($stopped['cancelled'] && $stopped['extension_seconds']===0,'Notification Stop clears timer and remainder');
+ $native(['action_id'=>'10','cancelled'=>false,'deadline_ms'=>$now+300000,'revision'=>3]);
+ rejectCooking(fn()=>$native(['action_id'=>'10','cancelled'=>true,'revision'=>0,'expected_deadline_ms'=>$extended['deadline_ms']]),409);
  // Access is rechecked after household removal.
  $pdo->exec('DELETE FROM household_memberships WHERE user_id=2');expectCooking($service->snapshot('2')['sessions']===[] && $service->snapshot('2')['ended_sessions']===[],'Removed members lose access');
  echo "Cooking sessions: discovery, invitation, joins, steps, timers, replay, conflicts, expiry and membership passed.\n";

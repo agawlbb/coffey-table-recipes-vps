@@ -149,3 +149,22 @@ sessions, recipe edits, AI requests or notifications were created. Existing
 private configuration and persistent data were preserved, and no database
 maintenance/schema script was rerun. Main remains unchanged. The Android test APK
 is built separately from app commit `4ba9b88ec2de9d476f1d35b6db1688677ff18503`.
+
+## 2.7.0 release integration — 2026-11-03
+
+The user approved including `task/photo-optimization` (`14bc218`) in this release.
+The merge retains the image worker, original-image preservation, HTTP serving,
+GD runtime checks and deployment preservation. Cooking session timer mutations
+also accept a notification action against the exact original deadline when its
+local start revision was not yet acknowledged. An action for a replaced deadline
+is rejected; a consumed extension cannot be consumed again. Authentication and
+joined-device authorization remain mandatory.
+
+Validation: `php tests/cooking_sessions.php`, `php tests/data_socket.php`,
+`php tests/timer_push.php`, `php tests/recipe_image_optimizer.php` (29 checks),
+`php tests/http.php` (34 checks), and the existing backend virtual environment's
+`python -m unittest discover -s tests -p test_deployment.py` (4 tests),
+`data_websocket.py` (6 tests), and `cooking_websocket.py` (2 tests) passed.
+No production data was used for these tests. Bootstrap/session PHP syntax and
+diff checks passed. Release deployment and app verification are recorded in the
+Flutter repository release evidence.

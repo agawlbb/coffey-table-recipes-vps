@@ -34,7 +34,8 @@ final class HttpService {
             if ($path==='/assets/email/coffey_table.jpg') return $this->file($method,CTR_ROOT.'/assets/email/coffey_table.jpg','image/jpeg',$base);
             if (preg_match('#^/media/recipes/((?:(?:[a-f0-9]{48}|[a-f0-9]{64}|[a-z][a-z0-9-]*-ai-v[1-9][0-9]*)\.(?:jpg|png|webp)|category-[1-9][0-9]*\.jpg))$#D',$path,$match)) {
                 $mime=match(strtolower(pathinfo($match[1],PATHINFO_EXTENSION))) {'jpg'=>'image/jpeg','png'=>'image/png','webp'=>'image/webp'};
-                return $this->file($method,$this->mediaDirectory.'/'.$match[1],$mime,$base+['Access-Control-Allow-Origin'=>'*']);
+                $optimized=(new RecipeImageOptimizer($this->mediaDirectory))->optimizedPath($match[1]);
+                return $this->file($method,$optimized??$this->mediaDirectory.'/'.$match[1],$optimized?'image/webp':$mime,$base+['Access-Control-Allow-Origin'=>'*']);
             }
             if (in_array($path,['/.well-known/assetlinks.json','/.well-known/apple-app-site-association'],true)) return $this->file($method,$this->associationsDirectory.'/'.basename($path),'application/json',$base);
             if (!str_starts_with($path,'/api/v1/')) throw new HttpError(404,'not_found','Page not found.');

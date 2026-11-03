@@ -136,7 +136,7 @@ final class CookingSessions
                     $key=(string)($body['action_id']??'');
                     if (!in_array($key,array_map(fn($r)=>(string)$r['id'],$s['recipe']['actions']),true)) throw new HttpError(422,'invalid_timer','Invalid recipe timer.');
                     $old=$s['timers'][$key]??null;
-                    if (($body['revision']??null)!==($old['revision']??0)) throw new HttpError(409,'timer_conflict','This timer changed on another device. Try again.');
+                    if (($body['revision']??null)!==($old['revision']??0) && !($old && ($body['expected_deadline_ms']??null)===$old['deadline_ms'] && (($body['cancelled']??false)===true || (($body['extend']??false)===true && ($old['extension_seconds']??0)>0)))) throw new HttpError(409,'timer_conflict','This timer changed on another device. Try again.');
                     $cancel=$body['cancelled']??null; $deadline=$body['deadline_ms']??null;
                     $extension=$body['extension_seconds']??0; $extend=$body['extend']??false;
                     if(!is_bool($extend) || !is_int($extension) || $extension<0 || $extension>604800 || ($extend && $cancel)) throw new HttpError(422,'invalid_timer','Invalid timer extension.');
