@@ -83,7 +83,20 @@ Server checks passed on 2026-11-03:
 - `php tests/data_socket.php`, `php tests/authentication.php`,
   `php tests/shopping_socket.php`, `php tests/timer_sync.php`: existing data,
   identity, shopping and account-timer regressions passed.
-- `.venv/bin/python -m unittest discover -s tests -p cooking_websocket.py`:
+- `/home/debian/projects/coffey-table-recipes-vps/.venv/bin/python -m unittest discover -s tests -p cooking_websocket.py`:
   both real WebSocket tests passed, including the 30-second expiry sweep without
   a client write. The existing `data_websocket.py` suite's five tests also passed.
 - `git diff --check` passed. No production data was used in tests.
+
+## Hosted backend — 2026-11-03
+
+Implementation `27705ed` was published using the existing `python3 deploy.py`
+copy-and-restart process. The deployed `CookingSessions.php`, `DataSocket.php`
+and `server.php` SHA-256 values match that tested source. The deployment verified
+`CpuShares=1024` and `cpu.max=max 100000`. Existing private configuration and
+persistent state remain outside replaced code.
+
+Read-only smoke checks passed: hosted public configuration returned HTTP 200;
+the hosted cooking WebSocket scope recognized the request and rejected an invalid
+token with HTTP-equivalent status 401. No live session, production test recipe,
+notification, app package or release was created. Main remains unmerged.
