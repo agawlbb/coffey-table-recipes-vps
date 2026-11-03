@@ -199,3 +199,12 @@ Deployed task source `bf7cf2e` using `python3 deploy.py` on 2026-11-03.
 Service restart, socket readiness and CPU policy passed; public health returned
 `status:ok`. The deployed CookingSessions.php hash matches the committed task
 source. Main integration remains pending; no database changes were needed.
+
+## Accepted 2.7.1 backend integration — 2026-11-03
+
+The user explicitly accepted the work and requested main integration and a
+three-platform app release. Canonical main includes `d51ab5a`; the previously
+deployed permission adjustment remains current. Cooking-session and data-socket
+tests passed again before integration. No new runtime or database change is
+required. The task branch and temporary worktree are removed after preserving
+source/configuration in the private worktree archive.
