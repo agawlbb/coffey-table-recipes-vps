@@ -427,3 +427,28 @@ HTTPS health returned 200/ok and AI WebSocket auth rejected an invalid token wit
 401. No live provider call or production recipe save was performed. The existing
 focused validation remains applicable because deployed application source did
 not change. No main merge or InMotion backend deployment occurred.
+
+
+## Device notification preferences
+
+Task `feature/notification-settings` starts from `5f2402e`. The optional boolean
+`receive_cooking_invitations` on `/me/timer-devices` stores each installation's
+invitation delivery choice. It defaults to enabled for a new device; requests
+omitting it preserve an existing choice. Device ownership and push-token account
+binding continue through the existing authenticated registration endpoint.
+
+Cooking invitation pushes honor this preference, including iOS alerts delivered
+while the app is closed. Disabling invitations does not remove shared sessions,
+change membership or suppress timer updates/cancellations to joined devices.
+
+Before deploying this source, run the explicit one-time setup:
+`php bin/notification-preferences.php apply` in the configured backend runtime.
+It adds only `timer_devices.receive_cooking_invitations BOOLEAN NOT NULL DEFAULT
+TRUE`, preserving existing devices and data. This setup is separate from routine
+`deploy.py` and is not performed during startup or requests.
+
+Validation: disposable `php tests/timer_sync.php`, `php tests/cooking_sessions.php`
+and `php tests/data_socket.php` passed. Changed PHP files and the setup script
+pass `php -l`. Tests cover opt-out/re-enable, registration without the new field,
+invalid preference input, shared-session discovery and continued joined timer
+pushes while invitations are disabled. No production data is used by these tests.

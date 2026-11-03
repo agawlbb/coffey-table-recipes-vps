@@ -23,10 +23,16 @@ try {
  expectCooking(count($service->snapshot('1')['sessions'])===1,'Same-account other devices discover sessions');
  expectCooking($service->snapshot('2')['sessions']===[],'Household membership alone does not expose sessions');
  rejectCooking(fn()=>$call('join',[],'2',$c),404);
- $pdo->prepare('INSERT INTO timer_devices VALUES(?,?,?,?,?,CURRENT_TIMESTAMP)')->execute([$c,'2','ios',str_repeat('token',8),0]);
+ $pdo->prepare('INSERT INTO timer_devices(installation_id,user_id,platform,push_token,receive_timers,updated_at) VALUES(?,?,?,?,?,CURRENT_TIMESTAMP)')->execute([$c,'2','ios',str_repeat('token',8),0]);
  $call('share',['person_id'=>'20']);
  expectCooking(count($pushes)===1 && $pushes[0][1]['kind']==='cooking_invitation','Share sends an invitation even before device joins');
  expectCooking(count($service->snapshot('2')['sessions'])===1,'Invited session remains discoverable');
+ $pdo->prepare('UPDATE timer_devices SET receive_cooking_invitations=0 WHERE installation_id=?')->execute([$c]);
+ $call('share',['person_id'=>'20']);
+ expectCooking(count($pushes)===1,'Disabled invitation preference suppresses background push');
+ expectCooking(count($service->snapshot('2')['sessions'])===1,'Disabling alerts preserves access to shared sessions');
+ // Keep the invitation preference disabled: joined timer updates must still arrive.
+
  $call('join',[],'2',$c); $call('join',[],'1',$b);
  expectCooking($service->snapshot('2')['sessions'][0]['joined_devices']===[$c],'Joined device list is account private');
  $call('step',['step_id'=>'1','checked'=>true,'revision'=>0]);

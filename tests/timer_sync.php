@@ -22,13 +22,20 @@ function rejectTimer(callable $action, int $status): void {
 }
 $pdo=new TimerTestDatabase('sqlite::memory:');
 $pdo->setAttribute(PDO::ATTR_ERRMODE,PDO::ERRMODE_EXCEPTION);
-$pdo->exec('CREATE TABLE timer_devices (installation_id TEXT PRIMARY KEY,user_id TEXT,platform TEXT,push_token TEXT,receive_timers INTEGER,updated_at TEXT);
+$pdo->exec('CREATE TABLE timer_devices (installation_id TEXT PRIMARY KEY,user_id TEXT,platform TEXT,push_token TEXT,receive_timers INTEGER,receive_cooking_invitations INTEGER NOT NULL DEFAULT 1,updated_at TEXT);
 CREATE TABLE shared_timers (user_id TEXT,timer_id TEXT,source_device TEXT,title TEXT,deadline_ms INTEGER,extension_seconds INTEGER NOT NULL DEFAULT 0,cancelled INTEGER,revision INTEGER,last_operation TEXT,updated_at TEXT,PRIMARY KEY(user_id,timer_id));');
 $deliveries=[];
 $service=new TimerSyncService($pdo,static function($target,$timer) use (&$deliveries) { $deliveries[]=[$target,$timer]; return true; });
 $a=str_repeat('a',32); $b=str_repeat('b',32); $c=str_repeat('c',32); $d=str_repeat('d',32);
 $register=static fn($user,$id,$enabled)=>$service->device($user,['installation_id'=>$id,'platform'=>'ios','push_token'=>str_repeat($id[0],100),'receive_timers'=>$enabled]);
 $register('1',$a,false); $register('1',$b,true); $register('2',$c,true); $register('1',$d,false);
+$service->device('1',['installation_id'=>$a,'platform'=>'ios','push_token'=>str_repeat('a',100),'receive_timers'=>false,'receive_cooking_invitations'=>false]);
+expectTimer((int)$pdo->query("SELECT receive_cooking_invitations FROM timer_devices WHERE installation_id='$a'")->fetchColumn()===0,'Device invitation opt-out persists');
+$register('1',$a,false);
+expectTimer((int)$pdo->query("SELECT receive_cooking_invitations FROM timer_devices WHERE installation_id='$a'")->fetchColumn()===0,'Registration without the new field preserves the existing choice');
+rejectTimer(fn()=>$service->device('1',['installation_id'=>$a,'platform'=>'ios','receive_timers'=>false,'receive_cooking_invitations'=>'false']),422);
+$service->device('1',['installation_id'=>$a,'platform'=>'ios','push_token'=>str_repeat('a',100),'receive_timers'=>false,'receive_cooking_invitations'=>true]);
+expectTimer((int)$pdo->query("SELECT receive_cooking_invitations FROM timer_devices WHERE installation_id='$a'")->fetchColumn()===1,'Invitation delivery can be re-enabled independently of timer subscription');
 $body=['installation_id'=>$a,'timer_id'=>$a.':42:step','operation_id'=>str_repeat('1',32),'title'=>'Soup','deadline_ms'=>(int)floor(microtime(true)*1000)+600000,'cancelled'=>false,'revision'=>0];
 $result=$service->change('1','firebase-val',$body);
 expectTimer($result['timer']['revision']===1,'First revision');

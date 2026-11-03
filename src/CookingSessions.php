@@ -171,12 +171,13 @@ final class CookingSessions
     }
     private function deliver(array $view,?string $invite,string $source,?string $timerKey): void {
         $s=$this->store(fn(&$state)=>$state[$view['id']]);
-            $q=$this->pdo->prepare('SELECT d.installation_id,d.push_token,d.platform,d.user_id,u.firebase_uid FROM timer_devices d JOIN users u ON u.id=d.user_id WHERE d.push_token IS NOT NULL AND u.disabled=0');
+            $q=$this->pdo->prepare('SELECT d.installation_id,d.push_token,d.platform,d.user_id,d.receive_cooking_invitations,u.firebase_uid FROM timer_devices d JOIN users u ON u.id=d.user_id WHERE d.push_token IS NOT NULL AND u.disabled=0');
             $q->execute();
             foreach ($q->fetchAll(PDO::FETCH_ASSOC) as $d) {
                 $user=(string)$d['user_id'];
                 if (!$this->accessible($s,$user)) continue;
                 $payloads=[];
+                if ($invite===$user && !$d['receive_cooking_invitations']) continue;
                 if ($invite===$user) $payloads[]=['kind'=>'cooking_invitation','session_id'=>$s['id'],'title'=>$s['recipe']['title']];
                 elseif (($s['devices'][$d['installation_id']]['user']??null)===$user && $d['installation_id']!==$source) $payloads=$timerKey===null?array_values($s['timers']):[$s['timers'][$timerKey]];
                 foreach ($payloads as $payload) {

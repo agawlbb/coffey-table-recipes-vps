@@ -21,6 +21,10 @@ final class TimerSyncService
         $platform = $body['platform'] ?? null;
         $receive = $body['receive_timers'] ?? null;
         $token = $body['push_token'] ?? null;
+        $invitations = $body['receive_cooking_invitations'] ?? true;
+        if (array_key_exists('receive_cooking_invitations', $body) && !is_bool($body['receive_cooking_invitations'])) {
+            throw new HttpError(422, 'invalid_timer_device', 'Choose whether to receive cooking invitations.');
+        }
         if (!in_array($platform, ['android', 'ios'], true) || !is_bool($receive)
             || ($token !== null && (!is_string($token) || strlen($token) > 4096 || strlen($token) < 20))
             || ($receive && $token === null)) {
@@ -28,10 +32,11 @@ final class TimerSyncService
         }
         // Installation IDs are random per installation. Account switches deliberately
         // rebind this installation, replacing its token and opt-in atomically.
-        $this->pdo->prepare('INSERT INTO timer_devices (installation_id,user_id,platform,push_token,receive_timers,updated_at)
-            VALUES (?,?,?,?,?,CURRENT_TIMESTAMP) ON DUPLICATE KEY UPDATE user_id=VALUES(user_id),platform=VALUES(platform),
-            push_token=VALUES(push_token),receive_timers=VALUES(receive_timers),updated_at=CURRENT_TIMESTAMP')
-            ->execute([$id,$user,$platform,$token,(int)$receive]);
+        $this->pdo->prepare('INSERT INTO timer_devices (installation_id,user_id,platform,push_token,receive_timers,receive_cooking_invitations,updated_at)
+            VALUES (?,?,?,?,?,?,CURRENT_TIMESTAMP) ON DUPLICATE KEY UPDATE user_id=VALUES(user_id),platform=VALUES(platform),
+            push_token=VALUES(push_token),receive_timers=VALUES(receive_timers),updated_at=CURRENT_TIMESTAMP'.
+            (array_key_exists('receive_cooking_invitations', $body) ? ',receive_cooking_invitations=VALUES(receive_cooking_invitations)' : ''))
+            ->execute([$id,$user,$platform,$token,(int)$receive,(int)$invitations]);
         // A refreshed token must not remain associated with another installation/account.
         if ($token !== null) $this->pdo->prepare('UPDATE timer_devices SET push_token=NULL,receive_timers=0 WHERE push_token=? AND installation_id<>?')->execute([$token,$id]);
         return ['receive_timers'=>$receive];
