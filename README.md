@@ -441,14 +441,22 @@ Cooking invitation pushes honor this preference, including iOS alerts delivered
 while the app is closed. Disabling invitations does not remove shared sessions,
 change membership or suppress timer updates/cancellations to joined devices.
 
-Before deploying this source, run the explicit one-time setup:
-`php bin/notification-preferences.php apply` in the configured backend runtime.
-It adds only `timer_devices.receive_cooking_invitations BOOLEAN NOT NULL DEFAULT
+Before deploying this source, apply `bin/notification-preferences.sql` once using
+the database maintenance identity against the hosted database. The application
+user deliberately has no ALTER privilege; do not expand that user's grants.
+The SQL adds only `timer_devices.receive_cooking_invitations BOOLEAN NOT NULL DEFAULT
 TRUE`, preserving existing devices and data. This setup is separate from routine
 `deploy.py` and is not performed during startup or requests.
 
 Validation: disposable `php tests/timer_sync.php`, `php tests/cooking_sessions.php`
-and `php tests/data_socket.php` passed. Changed PHP files and the setup script
-pass `php -l`. Tests cover opt-out/re-enable, registration without the new field,
+and `php tests/data_socket.php` passed. Changed PHP runtime files pass `php -l`. Tests cover opt-out/re-enable, registration without the new field,
 invalid preference input, shared-session discovery and continued joined timer
 pushes while invitations are disabled. No production data is used by these tests.
+
+Deployment verification: the maintenance identity installed the column as
+`tinyint(1) NOT NULL DEFAULT 1`. The initial application-identity attempt was
+rejected and the command sequence incorrectly continued into deployment before
+setup completed; maintenance setup corrected that brief ordering gap. Runtime
+DDL privileges were not broadened. Existing source-copy/restart deployment passed
+socket and CPU policy checks (`CpuShares=1024`, unlimited `cpu.max`); public health
+passed. No app build or hosted Flutter deployment was made.
