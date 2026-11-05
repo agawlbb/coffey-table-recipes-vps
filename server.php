@@ -41,6 +41,13 @@ $broadcast = static function (array $source) use (&$clients, $factory, $send): v
         if (!isset($entry['token'])) continue;
         $scope=$entry['scope'] ?? 'shopping';
         if ($scope==='public') continue;
+        if ($scope==='app') {
+            try {
+                $service=$factory(); $actor=$service->authenticate($entry['token'],null,'app');
+                $send($entry['connection'],['type'=>'snapshot','household_id'=>null,'data'=>$service->appSnapshot($actor,$source['scope'])]);
+            } catch (Throwable $error) { $entry['connection']->close(); }
+            continue;
+        }
         if ($source['scope']==='cooking') {
             if ($scope!=='cooking') continue;
         } elseif ($source['scope']==='timers') {
@@ -112,41 +119,67 @@ $worker->onMessage = static function (TcpConnection $c, string $text) use (&$cli
                 || (isset($m['body']) && !is_array($m['body']))) throw new HttpError(422, 'invalid_message', 'Invalid data request.');
             $body=$m['body'] ?? null;
             if (AccountService::matches($m['path'])) {
-                if ($entry['scope']!=='account') throw new HttpError(403,'permission_denied','Use an account connection.');
+                if (!in_array($entry['scope'],['account','app'],true)) throw new HttpError(403,'permission_denied','Use an account connection.');
                 if (strlen($text)>128*1024) throw new HttpError(413,'request_too_large','Account request is too large.');
                 $service->authenticate($entry['token'],null,'account');
-                $source=$entry;
+                $source=$entry; $source['scope']='account';
+                $terminal=null;
+                $app=$entry['scope']==='app';
                 $accountJobs->start((string)$c->id,['token'=>$entry['token'],'path'=>$m['path'],'body'=>$body],
-                    static function(array $event) use ($c,$id,$send): void { $send($c,$event+['id'=>$id]); },static function(bool $success) use (&$clients,$factory,$broadcast,$source,$body):void {
+                    static function(array $event) use ($c,$id,$send,$app,&$terminal): void {
+                        if ($app && $event['type']==='response') { $terminal=$event; return; }
+                        $send($c,$event+['id'=>$id]);
+                    },static function(bool $success) use (&$clients,$factory,$broadcast,$source,$body,$app,&$terminal,$send,$c,$id):void {
                         if (!$success) return;
-                        foreach ($clients as $client) {
-                            if (!isset($client['token'])) continue;
-                            try { $factory()->authenticate($client['token'],$client['household'],$client['scope']); }
-                            catch (Throwable $error) { $client['connection']->close(); }
+                        if ($body!==null) {
+                            foreach ($clients as $client) {
+                                if (!isset($client['token'])) continue;
+                                try { $factory()->authenticate($client['token'],$client['household'],$client['scope']); }
+                                catch (Throwable $error) { $client['connection']->close(); }
+                            }
                         }
-                        if ($body!==null) $broadcast($source);
+                        if ($body!==null || $app) $broadcast($source);
+                        if ($terminal!==null) $send($c,$terminal+['id'=>$id]);
                     },$body!==null);
                 return;
             }
             if ($entry['scope']==='account') throw new HttpError(404,'not_found','Account endpoint not found.');
             if (AiService::matches($m['path']) || AiService::categorizesSave($m['path'],$body)) {
-                if ($entry['scope']!=='ai' && !AiService::categorizesSave($m['path'],$body)) throw new HttpError(403,'permission_denied','Use an AI connection.');
+                if (!in_array($entry['scope'],['ai','app'],true) && !AiService::categorizesSave($m['path'],$body)) throw new HttpError(403,'permission_denied','Use an AI connection.');
                 if ($entry['scope']==='shopping' || $entry['scope']==='public' || $entry['scope']==='timers' || $entry['scope']==='cooking') throw new HttpError(403,'permission_denied','AI access denied.');
                 $service->authenticate($entry['token'],$entry['household'],$entry['scope']);
                 $source=$entry;
-                $aiJobs->start((string)$c->id,['token'=>$entry['token'],'household'=>$entry['household'],'scope'=>$entry['scope'],'path'=>$m['path'],'body'=>$body],
-                    static function(array $event) use ($c,$id,$send): void { $send($c,$event+['id'=>$id]); },
-                    static function(bool $success,?array $data=null) use ($source,$broadcast,$body,$scheduleImages): void {
+                if ($entry['scope']==='app') {
+                    $source['scope']='household';
+                    $source['household']=preg_match('#^/households/([1-9][0-9]*)/#',$m['path'],$match) ? $match[1] : null;
+                }
+                $terminal=null; $app=$entry['scope']==='app';
+                $aiJobs->start((string)$c->id,['token'=>$entry['token'],'household'=>$source['household'],'scope'=>$entry['scope']==='app'?'ai':$entry['scope'],'path'=>$m['path'],'body'=>$body],
+                    static function(array $event) use ($c,$id,$send,$app,&$terminal): void {
+                        if ($app && $event['type']==='response') { $terminal=$event; return; }
+                        $send($c,$event+['id'=>$id]);
+                    },
+                    static function(bool $success,?array $data=null) use ($source,$broadcast,$body,$scheduleImages,$app,&$terminal,$send,$c,$id): void {
                         if ($success && $body!==null) { $broadcast($source); if ($data!==null) $scheduleImages($source,$data); }
+                        if ($app && $terminal!==null) $send($c,$terminal+['id'=>$id]);
                     });
                 return;
             }
             if ($entry['scope']==='ai') throw new HttpError(404,'not_found','AI endpoint not found.');
             $data=$service->handle($entry['token'], $entry['household'], $m['path'], $body, $entry['scope']);
+            $source=$entry;
+            if ($entry['scope']==='app') {
+                $source['scope']=str_starts_with($m['path'],'/me/cooking-sessions') ? 'cooking' : (str_starts_with($m['path'],'/me/') ? 'timers' : 'household');
+                if (preg_match('#^/households/([1-9][0-9]*)/#',$m['path'],$match)) $source['household']=$match[1];
+                if (str_ends_with($m['path'],'/name')) $source['scope']='account';
+            }
+            $changed=$body!==null && !str_contains($m['path'],'/shopping-list/photos');
+            // Apply the server update before acknowledging a foreground save.
+            if ($changed && $entry['scope']==='app') $broadcast($source);
             $send($c, ['type'=>'response','id'=>$id,'data'=>$data]);
-            if ($body !== null && !str_contains($m['path'], '/shopping-list/photos')) {
-                $broadcast($entry);
-                $scheduleImages($entry,$data);
+            if ($changed) {
+                if ($entry['scope']!=='app') $broadcast($source);
+                $scheduleImages($source,$data);
                 CookingSessions::flushPushes();
             }
         }
@@ -160,12 +193,13 @@ $worker->onMessage = static function (TcpConnection $c, string $text) use (&$cli
 $worker->onClose = static function (TcpConnection $c) use (&$clients,$aiJobs,$accountJobs): void { $aiJobs->stop((string)$c->id); $accountJobs->disconnect((string)$c->id); unset($clients[$c->id]); };
 $worker->onWorkerStart = static function () use (&$clients,$aiJobs,$accountJobs,$factory,$send): void {
     Timer::add(30,static function() use (&$clients,$factory,$send): void {
-        try { $factory()->expireCooking(); } catch (Throwable $e) { /* The next sweep retries. */ }
-        foreach ($clients as $entry) {
-            if (($entry['scope']??'')!=='cooking') continue;
+        try { $changed=$factory()->expireCooking(); } catch (Throwable $e) { $changed=false; }
+        if ($changed) foreach ($clients as $entry) {
+            if (!in_array($entry['scope']??'',['cooking','app'],true)) continue;
             try {
-                $service=$factory(); $actor=$service->authenticate($entry['token'],null,'cooking');
-                $send($entry['connection'],['type'=>'snapshot','household_id'=>null,'data'=>$service->snapshot($actor)]);
+                $service=$factory(); $actor=$service->authenticate($entry['token'],null,$entry['scope']);
+                $snapshot=$entry['scope']==='app' ? $service->appSnapshot($actor,'cooking') : $service->snapshot($actor);
+                $send($entry['connection'],['type'=>'snapshot','household_id'=>null,'data'=>$snapshot]);
             } catch (Throwable $e) { $entry['connection']->close(); }
         }
         CookingSessions::flushPushes();

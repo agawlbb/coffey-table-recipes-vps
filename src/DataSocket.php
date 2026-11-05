@@ -10,15 +10,20 @@ final class DataSocket
 
     public function authenticate(string $token, ?string $household, string $scope = 'shopping'): array
     {
+        if ($scope==='app' && $token==='') return ['household'=>null,'user'=>'','uid'=>'','ha'=>false,'scope'=>'app','token'=>''];
         if ($scope === 'shopping' || $scope === 'household') {
             $actor = $this->shopping->authenticate($token, $household);
             if ($scope === 'household' && $actor['ha']) throw new HttpError(403,'permission_denied','Shopping access only.');
-        } elseif ($scope === 'account') {
+        } elseif ($scope === 'account' || $scope === 'app') {
             if ($household!==null) throw new HttpError(422,'invalid_household','Account connections do not select a household.');
             $identity=($this->verify)($token);
             $q=$this->pdo->prepare('SELECT id,disabled FROM users WHERE firebase_uid=?'); $q->execute([$identity['uid']]);
             $user=$q->fetch(PDO::FETCH_ASSOC);
             if ($user && $user['disabled']) throw new HttpError(403,'account_disabled','Account unavailable.');
+            if ($scope==='app' && $user && array_key_exists('email_verified',$identity)) {
+                $email=$identity['email'] ?? null; $verified=!empty($identity['email_verified']) ? 1 : 0;
+                $this->pdo->prepare('UPDATE users SET email=?,email_verified=? WHERE id=? AND (NOT (email <=> ?) OR email_verified<>?)')->execute([$email,$verified,$user['id'],$email,$verified]);
+            }
             $actor=['household'=>null,'user'=>$user ? (string)$user['id'] : '', 'uid'=>$identity['uid'],'ha'=>false];
         } elseif ($scope === 'public') {
             $actor = ['household'=>null,'user'=>'','ha'=>false];
@@ -33,12 +38,47 @@ final class DataSocket
             (new HouseholdService($this->pdo))->membership($actor['user'],$household);
             $actor['household']=$household;
         }
-        return $actor + ['scope'=>$scope];
+        return $actor + ['scope'=>$scope] + ($scope==='app' ? ['token'=>$token] : []);
+    }
+
+    public function appSnapshot(array $actor, ?string $part=null): array
+    {
+        $user=$actor['user'];
+        if ($user==='') return ['account'=>null,'households'=>(object)[],'cooking'=>['sessions'=>[]],'timers'=>['timers'=>[]]];
+        $data=[];
+        if ($part===null || $part==='account') {
+            $q=$this->pdo->prepare('SELECT id,display_name,email,email_verified,account_role FROM users WHERE id=?');
+            $q->execute([$user]); $row=$q->fetch(PDO::FETCH_ASSOC);
+            $row['id']=(string)$row['id']; $row['email_verified']=(bool)$row['email_verified'];
+            $h=new HouseholdService($this->pdo);
+            $policy=(new ChildMode($this->pdo))->state(['uid'=>$actor['uid']]);
+            $row['child_mode']=$policy['enabled'];
+            $invitations=(new InvitationService($this->pdo,$h,static fn()=>null,static fn()=>null))->pending($row);
+            $data['account']=['user'=>$row,'households'=>$h->households($user),
+                'invitations'=>$invitations['invitations'],'invitation_verification_required'=>$invitations['verification_required'],
+                'people_child_modes'=>(object)(new ChildMode($this->pdo))->peopleChildModes($user)];
+        }
+        if ($part===null || in_array($part,['account','household','shopping','ai'],true)) {
+            $households=[];
+            foreach ((new HouseholdService($this->pdo))->households($user) as $household) {
+                $member=$this->shopping->authenticate($actor['token'],$household['id']);
+                $households[$household['id']]=$this->snapshot($member+['scope'=>'household']);
+            }
+            $data['households']=(object)$households;
+        }
+        if ($part===null || in_array($part,['account','cooking'],true)) {
+            $data['cooking']=(new CookingSessions($this->pdo,$this->push,null,null,true))->snapshot($user);
+        }
+        if ($part===null || in_array($part,['account','timers'],true)) {
+            $data['timers']=(new TimerSyncService($this->pdo))->list($user);
+        }
+        return $data;
     }
 
     public function snapshot(array $actor): array
     {
         return match ($actor['scope']) {
+            'app'=>$this->appSnapshot($actor),
             'shopping'=>$this->shopping->snapshot($actor),
             'household'=>['shopping'=>$this->shopping->snapshot($actor),
                 'library'=>(new HouseholdSnapshot($this->pdo,new HouseholdService($this->pdo),
@@ -49,13 +89,20 @@ final class DataSocket
         };
     }
 
-    public function expireCooking(): void {
-        (new CookingSessions($this->pdo,$this->push,null,null,true))->sweep();
+    public function expireCooking(): bool {
+        return (new CookingSessions($this->pdo,$this->push,null,null,true))->sweep();
     }
 
     public function handle(string $token, ?string $household, string $path, ?array $body, string $scope='shopping'): array
     {
         $actor=$this->authenticate($token,$household,$scope);
+        if ($scope==='app') {
+            if (preg_match('#^/households/([1-9][0-9]*)/#', $path, $match)) return $this->handle($token,$match[1],$path,$body,'household');
+            if (str_starts_with($path,'/me/cooking-sessions')) return $this->handle($token,null,$path,$body,'cooking');
+            if (str_starts_with($path,'/me/')) return $this->handle($token,null,$path,$body,'timers');
+            if (str_starts_with($path,'/recipes/')) return $this->handle('',null,$path,$body,'public');
+            throw new HttpError(404,'not_found','Endpoint not found.');
+        }
         if ($scope==='shopping') return $this->shopping->handle($token,$household,$path,$body);
         $route=parse_url($path,PHP_URL_PATH); parse_str(parse_url($path,PHP_URL_QUERY) ?? '',$query);
         $user=$actor['user']; $h=new HouseholdService($this->pdo); $recipes=new RecipeService($this->pdo,$h);

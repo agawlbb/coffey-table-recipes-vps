@@ -5,6 +5,7 @@ declare(strict_types=1);
 final class CookingSessions
 {
     private static array $pending=[];
+    private bool $changed=false;
     public function __construct(private PDO $pdo, private $push = null, private ?string $directory = null, private $clock = null, private bool $deferPush=false) {}
     public static function flushPushes(): void {
         $pending=self::$pending; self::$pending=[];
@@ -20,19 +21,30 @@ final class CookingSessions
         try {
             $file=$dir.'/sessions.json';
             $state=is_file($file) ? json_decode(file_get_contents($file),true,128,JSON_THROW_ON_ERROR) : [];
+            $before=json_encode($state,JSON_THROW_ON_ERROR);
             $now=$this->now();
             foreach ($state as $id=>&$s) {
                 if ($s['ended_at']!==null) { if ($s['ended_at']<$now-7*86400000) unset($state[$id]); continue; }
                 $last=$s['last_open']; $latest=0;
-                foreach ($s['devices'] as $d) $last=max($last,$d['open_until']);
+                foreach ($s['devices'] as &$d) {
+                    $last=max($last,$d['open_until']);
+                    if ($d['open_until']>0 && $d['open_until']<=$now) {
+                        $s['last_open']=max($s['last_open'],$d['open_until']);
+                        $d['open_until']=0;
+                    }
+                }
+                unset($d);
                 foreach ($s['timers'] as $t) if (!$t['cancelled']) $latest=max($latest,$t['deadline_ms']);
                 if ($now>=max($last+$s['idle_ms'],$latest)) { $this->end($s,$now); $expired[]=$id; }
             }
             unset($s);
             $result=$action($state);
+            $encoded=json_encode($state,JSON_THROW_ON_ERROR);
+            $this->changed=$encoded!==$before;
+            if (!$this->changed && is_file($file)) { $saved=true; return $result; }
             $temporary=tempnam($dir,'sessions-');
             try {
-                if (file_put_contents($temporary,json_encode($state,JSON_THROW_ON_ERROR),LOCK_EX)===false || !rename($temporary,$file)) throw new RuntimeException('Session could not be saved.');
+                if (file_put_contents($temporary,$encoded,LOCK_EX)===false || !rename($temporary,$file)) throw new RuntimeException('Session could not be saved.');
                 chmod($file,0600);
             } finally { if (is_file($temporary)) unlink($temporary); }
             $saved=true;
@@ -45,7 +57,7 @@ final class CookingSessions
             }
         }
     }
-    public function sweep(): void { $this->store(static fn(&$state)=>null); }
+    public function sweep(): bool { $this->store(static fn(&$state)=>null); return $this->changed; }
     private function member(string $user,string $household): bool {
         $q=$this->pdo->prepare('SELECT role FROM household_memberships WHERE household_id=? AND user_id=?'); $q->execute([$household,$user]);
         return $q->fetchColumn()!==false;

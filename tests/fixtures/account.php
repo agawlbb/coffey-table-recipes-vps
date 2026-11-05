@@ -4,6 +4,10 @@ require_once dirname(__DIR__,2).'/bootstrap.php';
 
 // Translate only MySQL syntax used by the real account services for disposable SQLite tests.
 final class AccountFixturePDO extends PDO {
+    // SQLite must take its write reservation before reads to emulate the
+    // fixture queries' MySQL SELECT FOR UPDATE transactions without upgrades.
+    public function beginTransaction(): bool { return $this->exec('BEGIN IMMEDIATE')!==false; }
+
     private function sql(string $sql): string {
         $sql=str_replace(' FOR UPDATE','',$sql);
         if (str_starts_with($sql,'DELETE i FROM household_invitations i ')) $sql='DELETE FROM household_invitations WHERE id IN (SELECT i.id FROM '.substr($sql,strlen('DELETE i FROM ')).')';

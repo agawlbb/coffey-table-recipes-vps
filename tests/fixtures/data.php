@@ -2,7 +2,15 @@
 declare(strict_types=1);
 require_once dirname(__DIR__,2).'/bootstrap.php';
 final class SnapshotPDO extends PDO {
+    // SQLite must take its write reservation before reads to emulate the
+    // fixture queries' MySQL SELECT FOR UPDATE transactions without upgrades.
+    public function beginTransaction(): bool { return $this->exec('BEGIN IMMEDIATE')!==false; }
+
     public int $reads=0;
+    public function exec(string $sql): int|false {
+        $sql=str_replace('UTC_TIMESTAMP(6) - INTERVAL 5 MINUTE', "datetime('now','-5 minutes')", $sql);
+        return parent::exec($sql);
+    }
     public function prepare(string $query,array $options=[]): PDOStatement|false {
         $this->reads++;
         $query=str_replace([' FOR UPDATE',' <=> ','DATE_SUB(CURRENT_TIMESTAMP, INTERVAL 60 DAY)','DATE_SUB(CURRENT_TIMESTAMP, INTERVAL 7 DAY)'],['',' IS ',"datetime('now','-60 days')","datetime('now','-7 days')"],$query);
