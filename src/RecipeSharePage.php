@@ -76,7 +76,6 @@ h2{font-size:24px;font-weight:500;color:#465334;margin:32px 0 12px;padding-botto
 @media(max-width:600px){main{padding:28px 24px}.photos img{height:260px}}@media print{.branding{display:none}.photos{display:block}.photos figure{break-inside:avoid}body{background:white}}
 </style></head><body><main><header class="recipe-header">
 <h1><?= $e($r['title']) ?></h1>
-<?php if (isset($r['id'])): ?><p><a href="https://coffeybean.com/CoffeyTableRecipes/app/#/recipes/<?= $e($r['id']) ?>">Add to my household in the app</a></p><?php endif ?>
 <div class="branding"><img class="brand" src="/assets/email/coffey_table.jpg" alt="Coffey Table Recipes"><span>Coffey Table Recipes</span></div>
 </header>
 <?php if ($summary): ?><p><?= $e(implode(' · ', $summary)) ?></p><?php endif ?>

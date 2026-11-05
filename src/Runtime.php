@@ -36,15 +36,14 @@ function runtimeAccountConfig(): array {
     $smtp=array_replace(['host'=>'','port'=>465,'encryption'=>'ssl','username'=>'','password'=>'',
         'from_email'=>'CoffeyTableRecipies@coffeybean.com','from_name'=>'Coffey Table Recipes'],$smtp);
     return ['firebase_project_id'=>$firebase['firebase_project_id'],
-        'firebase_service_account_file'=>$private.'/firebase-admin.json','smtp'=>$smtp,
-        'app_url'=>'https://coffeybean.com/CoffeyTableRecipes/app/'];
+        'firebase_service_account_file'=>$private.'/firebase-admin.json','smtp'=>$smtp];
 }
 
 function runtimeAccountService(PDO $pdo,Closure $verify,?callable $progress=null): AccountService {
     $config=runtimeAccountConfig(); $directory=new FirebaseAccountDirectory($config);
     return new AccountService($pdo,$verify,[$directory,'requireAccount'],[$directory,'lookup'],
         [new InvitationMail($config),'send'],[$directory,'verificationLink'],[new VerificationMail($config),'send'],
-        $config['app_url'],[$directory,'delete'],[$directory,'all'],$progress);
+        [$directory,'delete'],[$directory,'all'],$progress);
 }
 function runtimeHomeAssistantConfig(): array {
     $private=getenv('CTR_PRIVATE') ?: '/run/ctr-private';

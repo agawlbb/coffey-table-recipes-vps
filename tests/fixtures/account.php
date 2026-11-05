@@ -28,7 +28,7 @@ function accountFixture(PDO $pdo,?callable $send=null): AccountService {
         if ($uid==='deleted') throw new HttpError(401,'account_deleted','Account deleted.');
     },static fn($email)=>null,$send??static fn()=>null,
     static fn($uid,$email)=>'https://example.test/verify?uid='.$uid,
-    $send??static fn()=>null,'https://example.test/app/',static function($uid) { if ($uid==='protected') throw new HttpError(503,'firebase_unavailable','Unavailable'); if ($uid==='guest') usleep(1200000); },
+    $send??static fn()=>null,static function($uid) { if ($uid==='protected') throw new HttpError(503,'firebase_unavailable','Unavailable'); if ($uid==='guest') usleep(1200000); },
     static function() { usleep(1200000); return []; });
 }
 function accountSchema(PDO $pdo): void {

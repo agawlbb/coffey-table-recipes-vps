@@ -54,7 +54,7 @@ final class FirebaseAccountDirectory
         if ($account['email_verified']) throw new HttpError(409, 'already_verified', 'Your email is already verified. Return to the app.');
         try {
             $response = $this->post('https://identitytoolkit.googleapis.com/v1/accounts:sendOobCode',
-                json_encode(['requestType' => 'VERIFY_EMAIL', 'email' => $account['email'], 'targetProjectId' => $this->config['firebase_project_id'], 'returnOobLink' => true, 'continueUrl' => $this->config['app_url'] . '?' . http_build_query(['account' => 'signin', 'email' => $account['email']])], JSON_THROW_ON_ERROR),
+                json_encode(['requestType' => 'VERIFY_EMAIL', 'email' => $account['email'], 'targetProjectId' => $this->config['firebase_project_id'], 'returnOobLink' => true], JSON_THROW_ON_ERROR),
                 ['Content-Type: application/json', 'Authorization: Bearer ' . $this->accessToken()]);
         } catch (HttpError $error) {
             throw new HttpError(503, 'verification_link_unavailable', 'The verification link could not be generated. Please try again later.');

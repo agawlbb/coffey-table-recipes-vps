@@ -5,7 +5,7 @@ declare(strict_types=1);
 final class AccountService {
     public function __construct(private PDO $pdo,private Closure $verify,private $requireAccount,
         private $lookup,private $sendInvitation,private $generateVerification,
-        private $sendVerification,private string $appUrl,private $deleteFirebase=null,private $listFirebase=null,private $progress=null) {}
+        private $sendVerification,private $deleteFirebase=null,private $listFirebase=null,private $progress=null) {}
 
     public static function matches(string $path): bool {
         return preg_match('#^/(?:me(?:/name|/verification-email|/child-mode)?|admin/(?:users|households|households/[1-9][0-9]*/ai-images|(?:users|people|firebase)/[A-Za-z0-9_-]{1,128}/delete|users/[1-9][0-9]*/reset-child-mode)|households|households/[1-9][0-9]*/home-assistant-connections(?:/[a-f0-9]{64})?|households/[1-9][0-9]*/people/[1-9][0-9]*/(?:invitations|name)|invitations/[1-9][0-9]*/respond)$#D',parse_url($path,PHP_URL_PATH)?:'')===1;
@@ -68,7 +68,7 @@ final class AccountService {
             }
             throw new HttpError(405,'method_not_allowed','Unsupported administration request.');
         }
-        $invitations=new InvitationService($this->pdo,$households,$this->lookup,$this->sendInvitation,$this->appUrl);
+        $invitations=new InvitationService($this->pdo,$households,$this->lookup,$this->sendInvitation);
         if ($route==='/me' && $body===null) {
             $user['child_mode']=$policy['enabled'];
             $pending=$invitations->pending($user);
