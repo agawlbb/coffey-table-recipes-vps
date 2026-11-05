@@ -34,3 +34,29 @@ HTTP/media/HA bootstrap (34). Fixtures send no email and use no production data.
 
 Account WebSocket fixture tests also passed (10), covering worker execution and
 progress delivery with the updated account-service constructor.
+
+## Completed operation — 2026-11-05
+
+The verified Samba site archive is 992,823,461 bytes and contains 1,186 entries.
+Its SHA-256 is `67321e7a12808a15f0eef0221aee72b48c274b5769b2a94de06f31be0ecaa0a2`.
+The two fresh SQL archives contain completed dumps of 31 and 21 tables; their
+sizes and hashes are in the backup manifest. All archive bytes were read back
+from Samba, and SQL gzip integrity/completion and site tar member contents were
+checked. These are the retained historical InMotion databases, not the active
+VPS database. No additional Samba permissions were applied.
+
+VPS commit `7601982` was deployed from this task branch. Public health and recipe
+9 return 200; rendered HTML contains no InMotion web-app link. The shopping
+WebSocket authenticated in public scope and answered ping with pong. SMTP TLS
+connection and authentication succeeded with the existing mailbox; no mail sent.
+CPU shares remain 1024 with unlimited cpu.max. No app build/release or main merge.
+
+After backup verification and VPS deployment, the entire dedicated CTR directory,
+its two retained databases, CTR-only root app associations and their MIME rule,
+the temporary export user, helper and remote backup files were removed. Direct
+cPanel inventories confirm absence. The old app, API, share page and both root
+association URLs now return 404. The unrelated domain homepage returns 200;
+FanControl, golf, LensSwap and the three unrelated databases remain in place.
+ACME challenges, DNS, mailboxes and SMTP settings were preserved. GitHub's hosted
+web workflow and all five legacy shared-host backend workflows are disabled.
+For CTR, InMotion now supplies SMTP only.

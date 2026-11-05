@@ -1,6 +1,6 @@
 > 2026-11-05: InMotion CTR web hosting is retired; only SMTP mail hosting is retained.
 > See [INMOTION-RETIREMENT.md](INMOTION-RETIREMENT.md) for current behavior, archive and removal scope.
-> Earlier hosting/deployment instructions below are historical.
+> Earlier references to InMotion CTR hosting below are historical.
 
 # Coffey Table Recipes VPS backend
 
