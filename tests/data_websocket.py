@@ -10,6 +10,19 @@ class DataWireTests(unittest.IsolatedAsyncioTestCase):
     connect = shopping.ShoppingWireTests.connect
     message = shopping.ShoppingWireTests.message
 
+    async def test_metadata_rename_is_in_the_same_canonical_household_generation(self):
+        ready=await self.auth(self.app)
+        library=ready['data']['library']
+        self.assertEqual(library['household']['id'],'1')
+        self.assertEqual(library['user']['id'],'1')
+        self.assertIsInstance(library['user']['child_mode'],bool)
+        before=library['version']
+        result=await self.request(self.app,'/households/1/name',{'name':'Renamed table'})
+        self.assertEqual(result['type'],'response')
+        pushed=await self.message(self.app)
+        self.assertEqual(pushed['data']['library']['household']['name'],'Renamed table')
+        self.assertNotEqual(pushed['data']['library']['version'],before)
+
     async def test_household_photo_routes_remain_private(self):
         import subprocess
         await self.auth(self.app)
@@ -104,7 +117,11 @@ class DataWireTests(unittest.IsolatedAsyncioTestCase):
         await other.send_json(dict(v=1, type='ping'))
         self.assertEqual((await self.message(other))['type'], 'pong')
         public = await self.connect()
-        self.assertEqual((await self.auth(public, scope='public', token='', household=None))['type'], 'ready')
+        public_ready = await self.auth(public, scope='public', token='', household=None)
+        self.assertEqual(public_ready['type'], 'ready')
+        self.assertIsInstance(public_ready['data'], dict, 'Dart requires an object handshake payload')
+        missing = await self.request(public, '/recipes/999999')
+        self.assertEqual(missing['status'], 404)
         self.assertEqual((await self.request(public, '/recipes/1'))['data']['recipe']['title'], 'Soup')
         self.assertEqual((await self.request(public, '/recipes/1', dict(title='forged')))['status'], 404)
 

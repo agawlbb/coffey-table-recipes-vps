@@ -101,6 +101,9 @@ final class HouseholdSnapshot {
             $blankOptions=$options; $blankOptions['favorites']=['people'=>array_map(static fn($p)=>['id'=>$p['id'],'display_name'=>$p['display_name'],'user_id'=>$p['user_id'],'favorite'=>false],$people),'current_person_id'=>$current];
             $responses["$rootPath/recipe-blank"]=['recipe'=>['title'=>'','source_type'=>'blank','original_language'=>'en','measurement_system'=>'unspecified','edit_options'=>$blankOptions]];
             $result=['schema'=>1,'household_id'=>$household,'recipes'=>array_map(static fn($r)=>['id'=>$r['id'],'title'=>$r['title'],'description'=>$r['description'],'parent_recipe_id'=>$r['parent_recipe_id'],'family_representative_id'=>$r['family_representative_id'],'is_variation'=>$r['is_variation'],'photo_url'=>$r['photos'][0]['source_url'] ?? null],$recipes),'categories'=>$categories,'responses'=>$responses,'edit_options'=>$options];
+            $result['household']=$this->rows('SELECT h.id,h.name,m.role FROM households h JOIN household_memberships m ON m.household_id=h.id WHERE h.id=? AND m.user_id=?',[$household,$user])[0];
+            $result['user']=$this->rows('SELECT id,display_name,child_mode FROM users WHERE id=?',[$user])[0];
+            $result['user']['child_mode']=(bool)$result['user']['child_mode'];
             $result['version']=hash('sha256',json_encode($result,JSON_THROW_ON_ERROR));
             $this->pdo->commit();
             return $result;

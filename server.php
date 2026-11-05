@@ -98,7 +98,7 @@ $worker->onMessage = static function (TcpConnection $c, string $text) use (&$cli
             $accountJobs->disconnect((string)$c->id);
             $entry['scope']=$scope; $entry['actor']=$actor;
             $entry['token']=$m['token']; $entry['household']=$actor['household'];
-            $data=in_array($scope,['ai','account'],true) ? (object)[] : $service->snapshot($actor);
+            $data=(object)(in_array($scope,['ai','account'],true) ? [] : $service->snapshot($actor));
             $send($c, ['type'=>'ready','household_id'=>$entry['household'],'data'=>$data]);
         } else {
             if (!isset($entry['token'])) throw new HttpError(401, 'authentication_required', 'Authenticate first.');
@@ -115,14 +115,16 @@ $worker->onMessage = static function (TcpConnection $c, string $text) use (&$cli
                 if ($entry['scope']!=='account') throw new HttpError(403,'permission_denied','Use an account connection.');
                 if (strlen($text)>128*1024) throw new HttpError(413,'request_too_large','Account request is too large.');
                 $service->authenticate($entry['token'],null,'account');
+                $source=$entry;
                 $accountJobs->start((string)$c->id,['token'=>$entry['token'],'path'=>$m['path'],'body'=>$body],
-                    static function(array $event) use ($c,$id,$send): void { $send($c,$event+['id'=>$id]); },static function(bool $success) use (&$clients,$factory):void {
+                    static function(array $event) use ($c,$id,$send): void { $send($c,$event+['id'=>$id]); },static function(bool $success) use (&$clients,$factory,$broadcast,$source,$body):void {
                         if (!$success) return;
                         foreach ($clients as $client) {
                             if (!isset($client['token'])) continue;
                             try { $factory()->authenticate($client['token'],$client['household'],$client['scope']); }
                             catch (Throwable $error) { $client['connection']->close(); }
                         }
+                        if ($body!==null) $broadcast($source);
                     },$body!==null);
                 return;
             }
@@ -150,10 +152,10 @@ $worker->onMessage = static function (TcpConnection $c, string $text) use (&$cli
         }
     } catch (HttpError $e) {
         $send($c, ['type'=>'error','id'=>$id,'status'=>$e->status,'error'=>['code'=>$e->errorCode,'message'=>$e->getMessage()]]);
-        if (in_array($e->status, [401,403,404], true)) $c->close();
+        if ($e->status===401 || in_array($e->errorCode,['account_disabled','household_not_found','household_access_removed','invalid_connection'],true)) $c->close();
     } catch (JsonException $e) { $send($c, ['type'=>'error','id'=>$id,'status'=>422,'error'=>['message'=>'Invalid data message.']]); }
-    catch (PDOException $e) { $factory(true); $send($c,['type'=>'error','id'=>$id,'status'=>503,'error'=>['message'=>'Database connection interrupted. Retry shortly.']]); }
-    catch (Throwable $e) { $send($c, ['type'=>'error','id'=>$id,'status'=>503,'error'=>['message'=>'Data synchronization temporarily unavailable.']]); }
+    catch (PDOException $e) { error_log('CTR database failure '.get_class($e).' at '.basename($e->getFile()).':'.$e->getLine()); $factory(true); $send($c,['type'=>'error','id'=>$id,'status'=>503,'error'=>['code'=>'database_unavailable','message'=>'Database connection interrupted. Retry shortly.']]); }
+    catch (Throwable $e) { error_log('CTR socket failure '.get_class($e).' at '.basename($e->getFile()).':'.$e->getLine()); $send($c, ['type'=>'error','id'=>$id,'status'=>503,'error'=>['code'=>'internal_error','message'=>'Data synchronization temporarily unavailable.']]); }
 };
 $worker->onClose = static function (TcpConnection $c) use (&$clients,$aiJobs,$accountJobs): void { $aiJobs->stop((string)$c->id); $accountJobs->disconnect((string)$c->id); unset($clients[$c->id]); };
 $worker->onWorkerStart = static function () use (&$clients,$aiJobs,$accountJobs,$factory,$send): void {
