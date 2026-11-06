@@ -37,9 +37,25 @@ adding complexity. Stay within the requested behavior; no unsolicited features.
   of Git. Dependencies are project-local and locked. Never print secrets.
 - The persistent MariaDB database runs on the VPS private database network. Never use production data
   or production containers for development tests. Use disposable SQLite fixtures.
-- Use proportionate validation: affected PHP fixtures and wire tests for socket
-  changes; deployment preservation tests for deployer changes; diff review for
-  documentation. Do not repeat passing checks without a relevant source change.
+- The owner's requirements define correctness; existing tests are evidence, not
+  additional requirements. Test failures never authorize adding unrequested
+  restrictions, version comparisons, conflict handling or other behavior.
+- Before editing, state the observable behavior and smallest relevant checks.
+  Use affected PHP fixtures or wire checks for the behavior changed, deployment
+  tooling tests only when that tooling changes, and diff review for documentation.
+  A full suite requires an explicit request for that suite; a deployment, release,
+  shared-code change, merge or push does not authorize it. Explain a concrete
+  reason before broadening focused checks. Do not repeat passing checks without
+  a relevant new change, failure or unresolved concern.
+- Classify a failing test before changing code: fix requested behavior; remove or
+  correct tests imposing unwanted behavior; ask about unclear product decisions.
+  Test observable outcomes rather than internal counters, queue layouts or retry
+  counts. Preserve useful authentication, account isolation and actual user-data
+  protection coverage. Do not retain obsolete tests as a competing specification.
+- Separate test execution from build/deployment/delivery. Keep live health,
+  deployed-source and package verification, but no automatic test-suite hooks.
+  Report exactly what was checked and its limits; passing tests do not establish
+  untested requirements. A test cleanup does not authorize production changes.
 - Keep private/state directories outside replaced code. Routine deployment copies
   source and restarts the existing process. No cPanel credential belongs here.
 - Schema changes and credential imports are explicit setup/maintenance actions,
