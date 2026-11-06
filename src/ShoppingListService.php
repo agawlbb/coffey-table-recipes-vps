@@ -1,6 +1,5 @@
 <?php
 declare(strict_types=1);
-require_once __DIR__.'/ShoppingListChanges.php';
 
 final class ShoppingListService
 {
@@ -9,8 +8,7 @@ final class ShoppingListService
 
     public static function validate(array $body, ?array $departments = null): array
     {
-        if (!is_int($body['revision'] ?? null) || $body['revision'] < 0
-            || !is_array($body['items'] ?? null) || array_values($body['items']) !== $body['items'] || count($body['items']) > 500) {
+        if (!is_array($body['items'] ?? null) || array_values($body['items']) !== $body['items'] || count($body['items']) > 500) {
             throw new HttpError(422, 'invalid_list', 'Choose up to 500 shopping items.');
         }
         $items = []; $ids = [];
@@ -37,7 +35,7 @@ final class ShoppingListService
     public function read(string $user, string $household): array
     {
         $state = $this->readState($user, $household);
-        unset($state['associations'], $state['sync']);
+        unset($state['associations']);
         return $state;
     }
 
@@ -52,7 +50,7 @@ final class ShoppingListService
         return ['revision'=>$row ? (int)$row['revision'] : 0,
             'items'=>$stored['items'] ?? $stored,
             'departments'=>$stored['departments'] ?? array_merge(array_slice(self::DEPARTMENTS, 2), ['Other']),
-            'associations'=>$stored['associations'] ?? [], 'sync'=>$stored['sync'] ?? []];
+            'associations'=>$stored['associations'] ?? []];
     }
 
     private static function itemKey(string $name): string
@@ -126,43 +124,12 @@ final class ShoppingListService
             $q->execute([$household]);
             $old = $this->readState($user, $household);
             $changeId=$body['client_change_id'] ?? null;
-            $changedAt=$body['edited_at_ms'] ?? null;
-            $modern=$changeId!==null;
-            $hash=hash('sha256',json_encode($body,JSON_THROW_ON_ERROR));
-            if ($modern) {
-                if (!is_string($changeId) || !preg_match('/^[a-zA-Z0-9_-]{1,80}$/D',$changeId)
-                    || !is_int($changedAt) || $changedAt<946684800000 || $changedAt>(int)(microtime(true)*1000)+300000
-                    || !is_array($body['base_items'] ?? null)) {
-                    throw new HttpError(422,'invalid_change','The saved shopping change is invalid. Check the device clock and retry.');
-                }
-                if (isset($old['sync']['receipts'][$changeId])) {
-                    if ($old['sync']['receipts'][$changeId]!==$hash) throw new HttpError(409,'change_id_reused','This change identifier was already used.');
-                    $this->pdo->commit();
-                    return ['revision'=>$old['revision'],'items'=>$old['items'],'departments'=>$old['departments'],'acknowledged_change_id'=>$changeId];
-                }
-            } elseif ($old['revision'] !== ($body['revision'] ?? null)) {
-                // Older apps have no change ID. An exact readback still proves
-                // the desired state was saved after its response was lost.
-                if (is_int($body['revision'] ?? null) && $body['revision']<$old['revision']
-                    && ($body['departments'] ?? $old['departments'])===$old['departments']
-                    && empty($body['department_renames'])) {
-                    $retry=self::validate($body,$old['departments']);
-                    foreach ($retry as $i=>&$item) {
-                        foreach (['note', 'photo'] as $field) {
-                            if (!array_key_exists($field,$item) && isset($old['items'][$i][$field])
-                                && $old['items'][$i]['id']===$item['id']) $item[$field]=$old['items'][$i][$field];
-                        }
-                    } unset($item);
-                    if ($retry==$old['items']) {
-                        $this->pdo->commit();
-                        return ['revision'=>$old['revision'],'items'=>$old['items'],'departments'=>$old['departments']];
-                    }
-                }
-                throw new HttpError(409, 'shopping_conflict', 'The shopping list changed. Review the updated list and try again.');
-            }
-            if ($modern && isset($body['departments']) && isset($body['base_departments'])
-                && $body['base_departments'] !== $old['departments'] && $body['departments'] !== $old['departments']) {
-                throw new HttpError(409, 'department_conflict', 'Departments changed on another device. Review before retrying.');
+            // A queued removal changes only these item identities, never an old list.
+            if (isset($body['remove_ids'])) {
+                $ids=$body['remove_ids'];
+                if (!is_array($ids) || count($ids)>500 || array_filter($ids,fn($id)=>!is_string($id) || !preg_match('/^[a-zA-Z0-9_-]{1,80}$/D',$id)))
+                    throw new HttpError(422,'invalid_item','Choose valid shopping items.');
+                $body=['items'=>array_values(array_filter($old['items'],fn($item)=>!in_array($item['id'],$ids,true)))];
             }
             $departments = array_key_exists('departments', $body) ? $body['departments'] : $old['departments'];
             if (!is_array($departments) || array_values($departments) !== $departments || count($departments) > 50) {
@@ -177,19 +144,6 @@ final class ShoppingListService
                 $names[] = mb_strtolower($department);
             }
             $items = self::validate($body, $departments);
-            $base=$old['items'];
-            if ($modern) {
-                $baseDepartments=$departments;
-                foreach ($body['base_items'] as $item) {
-                    if (is_array($item) && is_string($item['department'] ?? null)) $baseDepartments[]=$item['department'];
-                }
-                $base=self::validate(['revision'=>0,'items'=>$body['base_items']],array_unique($baseDepartments));
-            }
-            [$items,$sync]=ShoppingListChanges::merge($old['items'],$base,$items,$old['sync'],
-                [$modern?$changedAt:(int)(microtime(true)*1000),$modern?$changeId:'legacy-'.sprintf('%020d',$old['revision']+1)]);
-            // Validate the merged list too: an old operation cannot reintroduce a removed department.
-            $items=self::validate(['revision'=>0,'items'=>$items],$departments);
-            if ($modern) $sync['receipts'][$changeId]=$hash;
             $renames = $body['department_renames'] ?? [];
             if (!is_array($renames)) throw new HttpError(422, 'invalid_departments', 'Choose a valid department rename.');
             foreach ($renames as $from => $to) {
@@ -236,7 +190,7 @@ final class ShoppingListService
             // Bound household metadata while retaining the most recently taught names.
             $associations = array_slice($associations, -1000, null, true);
             $revision = $old['revision'] + 1;
-            $json = json_encode(['items'=>$items, 'departments'=>$departments, 'associations'=>$associations, 'sync'=>$sync], JSON_THROW_ON_ERROR);
+            $json = json_encode(['items'=>$items, 'departments'=>$departments, 'associations'=>$associations], JSON_THROW_ON_ERROR);
             if ($old['revision'] === 0) {
                 $this->pdo->prepare('INSERT INTO shopping_lists (household_id,revision,items) VALUES (?,?,?)')->execute([$household,$revision,$json]);
             } else {
@@ -244,7 +198,7 @@ final class ShoppingListService
             }
             $this->pdo->commit();
             return ['revision'=>$revision, 'items'=>$items, 'departments'=>$departments]
-                + ($modern?['acknowledged_change_id'=>$changeId]:[]);
+                + (is_string($changeId) ? ['acknowledged_change_id'=>$changeId] : []);
         } catch (Throwable $error) {
             if ($this->pdo->inTransaction()) $this->pdo->rollBack();
             throw $error;

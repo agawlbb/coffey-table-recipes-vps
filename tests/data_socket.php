@@ -45,8 +45,9 @@ $badRange=$edited; $badRange['client_save_id']=str_repeat('f',32); $badRange['ac
 rejectData(fn()=>$call('/recipes/'.$saved['id'],$badRange),422);
 checkData((int)$call('/recipes/'.$saved['id'])['recipe']['actions'][0]['duration_max_seconds']===180,'Invalid range rolled back');
 $edit['client_save_id']=str_repeat('c',32);
-rejectData(fn()=>$call('/recipes/'.$saved['id'],$edit),409);
-checkData($call('/recipes/'.$saved['id'])['recipe']['title']==='Edited soup','Stale edit cannot overwrite');
+$edit['title']='Last save wins';
+$call('/recipes/'.$saved['id'],$edit);
+checkData($call('/recipes/'.$saved['id'])['recipe']['title']==='Last save wins','Stale edit overwrites current content');
 $plan=['revision'=>0,'operation'=>'add','id'=>'meal1','date'=>'2099-01-01','kind'=>'recipe','recipe_id'=>$saved['id']];
 checkData($call('/meal-plan',$plan)['revision']===1,'Meal plan write');
 checkData(count($call('/meal-plan?from=2099-01-01&to=2099-01-02')['entries'])===1,'Meal plan read');

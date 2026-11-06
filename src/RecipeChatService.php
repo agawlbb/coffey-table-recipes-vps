@@ -143,8 +143,7 @@ PROMPT;
         try {
             if(!flock($lock,LOCK_EX|LOCK_NB))throw new HttpError(409,'chat_in_progress','AI is still working on this conversation. Please try again shortly.');
             $context=new RecipeUserContext($this->pdo,$this->storage,$user);
-            $stored=is_file($path)?json_decode(file_get_contents($path),true,128,JSON_THROW_ON_ERROR):['binding'=>$binding,'revision'=>0,'messages'=>[],'turns'=>[],
-                'source_hash'=>$source===null?null:hash('sha256',json_encode([$source['revision']??null,self::cookingSource($source)],JSON_THROW_ON_ERROR))];
+            $stored=is_file($path)?json_decode(file_get_contents($path),true,128,JSON_THROW_ON_ERROR):['binding'=>$binding,'revision'=>0,'messages'=>[],'turns'=>[]];
             if($stored['binding']!==$binding)throw new HttpError(409,'chat_outcome_changed','Start a new conversation to change its outcome.');
             $parts=$draftView?[$action,$revision,$message,true]:[$action,$revision,$message];if($saveAs!==null)$parts[]=$saveAs;$fingerprint=hash('sha256',json_encode($parts,JSON_THROW_ON_ERROR));
             if(isset($stored['turns'][$turn])) {if($stored['turns'][$turn]['fingerprint']!==$fingerprint)throw new HttpError(409,'chat_turn_changed','Retry the original request or send a new message.');$cached=true;$status='completed';return $stored['turns'][$turn]['response'];}
@@ -169,7 +168,6 @@ PROMPT;
                 $messages[]=['role'=>'assistant','content'=>json_encode($reply,JSON_THROW_ON_ERROR|JSON_UNESCAPED_UNICODE)];$stored['messages']=$messages;
                 $show=$reply['show_recipe'];
             } else {
-                if($source!==null && !hash_equals($stored['source_hash'],hash('sha256',json_encode([$source['revision']??null,self::cookingSource($source)],JSON_THROW_ON_ERROR))))throw new HttpError(409,'chat_recipe_changed','The original recipe changed during this chat. Start a new conversation with the updated recipe.');
                 if($draftRecipe===null && $oldText!=='') {
                     $usage['legacy_conversion']=true;$config=array_replace($this->config,['chat_review'=>true,'chat_import_agreed_draft'=>true]);
                     try{$converted=(new RecipeImportService($config,$this->storage,function($payload)use(&$usage){return $this->send($payload,$usage,240);}))->analyze(['kind'=>'text','text'=>$oldText],$user,$categories);}

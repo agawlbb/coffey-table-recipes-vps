@@ -38,8 +38,8 @@ checkShopping($service->read('2','1') === $saved);
 $apple['checked'] = true;
 $saved = $service->save('2','1',['revision'=>1,'items'=>[$apple,$milk]]);
 checkShopping($saved['revision']===2 && $saved['items'][0]['checked']);
-rejectShopping(fn()=>$service->save('1','1',['revision'=>1,'items'=>[]]),409);
-checkShopping($service->read('1','1') === $saved);
+$saved=$service->save('1','1',['revision'=>0,'items'=>[]]);
+checkShopping($saved['items']===[]);
 rejectShopping(fn()=>$service->read('3','1'),404);
 rejectShopping(fn()=>$service->save('3','1',['revision'=>2,'items'=>[]]),404);
 checkShopping($service->read('3','2')['items']===[]);
@@ -74,8 +74,8 @@ rejectShopping(fn()=>$service->save('1','1',['revision'=>9,'departments'=>['Dair
 $saved['items'][0]['department']='';
 $saved=$service->save('2','1',['revision'=>9,'departments'=>['Dairy & eggs'],'items'=>$saved['items']]);
 checkShopping($saved['items'][0]['department']==='' && $saved['departments']===['Dairy & eggs']);
-rejectShopping(fn()=>$service->save('1','1',['revision'=>9,'departments'=>[],'items'=>[]]),409);
-checkShopping($service->read('1','1')===$saved);
+$saved=$service->save('1','1',['departments'=>[],'items'=>[]]);
+checkShopping($saved['items']===[]);
 // Explicitly verify legacy storage remains readable.
 $pdo->prepare('UPDATE shopping_lists SET items=? WHERE household_id=1')->execute([json_encode([$milk])]);
 checkShopping($service->read('1','1')['items'][0]['name']===' Milk ');
@@ -115,9 +115,9 @@ $saved=memorySave([memoryItem('onions','Green onions')]);
 checkShopping($saved['items'][0]['department']==='Deli');
 // Stale writes cannot replace a confirmed association.
 $stale=$saved['revision']; $saved['items'][0]['department']='Dairy & eggs'; memorySave($saved['items']);
-rejectShopping(fn()=>$service->save('2','1',['revision'=>$stale,'items'=>[memoryItem('onions','Green onions','Bakery')]]),409);
+$service->save('2','1',['revision'=>$stale,'items'=>[memoryItem('onions','Green onions','Bakery')]]);
 memorySave([]); $saved=memorySave([memoryItem('onions','Green onions')]);
-checkShopping($saved['items'][0]['department']==='Dairy & eggs');
+checkShopping($saved['items'][0]['department']==='Bakery');
 // Explicitly moving to the unassigned group is remembered too.
 $saved['items'][0]['department']=''; memorySave($saved['items']); memorySave([]);
 $saved=memorySave([memoryItem('onions','GREENONIONS')]);
@@ -179,48 +179,14 @@ foreach ([null, 12, [], str_repeat('n',501)] as $invalidNote) {
 }
 echo "Entry notes sharing, legacy preservation, clearing, validation and association isolation passed\n";
 
-// Repeat-safe changes: one user's lost response must not become a revision conflict.
-$pdo->exec("INSERT INTO households VALUES (3); INSERT INTO household_memberships VALUES (3,1,'owner')");
-$seed=$service->save('1','3',['revision'=>0,'items'=>[
-    memoryItem('a','Milk','Dairy & eggs'),memoryItem('b','Bread','Bakery')]]);
-$when=(int)(microtime(true)*1000)+10;
-$deletion=['revision'=>$seed['revision'],'items'=>[$seed['items'][1]],'base_items'=>$seed['items'],
-    'client_change_id'=>'delete-once','edited_at_ms'=>$when+20];
-$deleted=$service->save('1','3',$deletion); // Imagine the HTTP response was lost.
-$restarted=new ShoppingListService($pdo,$membership);
-$replayed=$restarted->save('1','3',$deletion);
-checkShopping($replayed['revision']===$deleted['revision'] && count($replayed['items'])===1);
-checkShopping($replayed['acknowledged_change_id']==='delete-once');
-$oldMove=$deletion; $oldMove['client_change_id']='older-move'; $oldMove['edited_at_ms']=$when;
-$oldMove['items']=$seed['items']; $oldMove['items'][0]['department']='Produce';
-checkShopping(count($restarted->save('1','3',$oldMove)['items'])===1);
-$current=$restarted->read('1','3');
-$move=['revision'=>$current['revision'],'base_items'=>$current['items'],'items'=>$current['items'],
-    'client_change_id'=>'newer-move','edited_at_ms'=>$when+40];
-$move['items'][0]['department']='Pantry';
-$moved=$restarted->save('1','3',$move);
-$rename=$move; $rename['client_change_id']='rename-item'; $rename['edited_at_ms']=$when+50;
-$rename['items']=$current['items']; $rename['items'][0]['name']='Whole wheat bread';
-$renamed=$restarted->save('1','3',$rename);
-checkShopping($renamed['items'][0]['department']==='Pantry' && $renamed['items'][0]['name']==='Whole wheat bread');
-$late=$move; $late['client_change_id']='late-old-move'; $late['edited_at_ms']=$when+30;
-$late['items'][0]['department']='Deli';
-checkShopping($restarted->save('1','3',$late)['items'][0]['department']==='Pantry');
-$again=$restarted->save('1','3',$deletion);
-checkShopping($again['items'][0]['name']==='Whole wheat bread');
-$collision=$deletion; $collision['items']=[];
-rejectShopping(fn()=>$restarted->save('1','3',$collision),409);
-checkShopping(!isset($restarted->read('1','3')['sync']));
-echo "Shopping delete durability, receipt replay, older-edit suppression and independent field merging passed\n";
-
-$pdo->exec("INSERT INTO households VALUES (4); INSERT INTO household_memberships VALUES (4,1,'owner')");
-$oldClient=$service->save('1','4',['revision'=>0,'items'=>[memoryItem('old','Old client item')]]);
-$oldDelete=['revision'=>$oldClient['revision'],'items'=>[]];
-$confirmed=$service->save('1','4',$oldDelete);
-$retried=$service->save('1','4',$oldDelete);
-checkShopping($retried===$confirmed);
-rejectShopping(fn()=>$service->save('1','4',['revision'=>$oldClient['revision'],'items'=>[memoryItem('old','Old client item')]]),409);
-echo "Legacy single-device lost-delete-response retry is acknowledged without overwriting any newer data\n";
+// Delayed removals affect only the original identity, including after retries.
+$service->save('1','1',['items'=>[memoryItem('old-milk','Milk'),memoryItem('new-milk','Milk'),memoryItem('bread','Bread')]]);
+$removed=$service->save('1','1',['remove_ids'=>['old-milk']]);
+checkShopping(array_column($removed['items'],'id')===['new-milk','bread']);
+$removed=$service->save('1','1',['remove_ids'=>['old-milk']]);
+checkShopping(array_column($removed['items'],'id')===['new-milk','bread']);
+rejectShopping(fn()=>$service->save('3','1',['remove_ids'=>['new-milk']]),404);
+echo "Last update wins and item-specific repeatable removals passed\n";
 
 // Photos share note semantics, including old clients and independent concurrent edits.
 $photoItem = array_replace($milk, ['photo'=>str_repeat('a',64)]);
@@ -235,10 +201,6 @@ checkShopping($saved['items'][0]['photo'] === '');
 foreach ([null, true, '../outside', 'https://example.com/photo.jpg'] as $badPhoto) {
     rejectShopping(fn()=>$service->save('1','1',['revision'=>$saved['revision'],'items'=>[array_replace($photoItem,['photo'=>$badPhoto])]]),422);
 }
-[$merged] = ShoppingListChanges::merge([$photoItem], [$legacy], [array_replace($legacy,['checked'=>true])], [], [100,'check']);
-checkShopping($merged[0]['photo'] === $photoItem['photo'] && $merged[0]['checked']);
-[$merged] = ShoppingListChanges::merge([array_replace($photoItem,['checked'=>true])], [$photoItem], [array_replace($photoItem,['photo'=>str_repeat('b',64)])], [], [101,'replace']);
-checkShopping($merged[0]['photo'] === str_repeat('b',64) && $merged[0]['checked']);
 $saved = $service->save('1','1',['revision'=>$saved['revision'],'items'=>[]]);
 $saved = $service->save('1','1',['revision'=>$saved['revision'],'items'=>[array_replace($legacy,['id'=>'new-photo-item'])]]);
 checkShopping(!isset($saved['items'][0]['photo']));

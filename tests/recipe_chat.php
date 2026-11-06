@@ -59,7 +59,8 @@ try {
  $edit=$service->handle(array_replace($base,['turn_id'=>str_repeat('3',32),'revision'=>2,'save_as'=>'edit']),'alice','house-one',$source,$catalog)['draft']['recipe'];
  foreach(['id','revision','photos','source_type','source_text','parent_recipe_id','pairings'] as $field)checkChat($edit[$field]===$source[$field],'Local edit preserves '.$field);
  checkChat($edit['category_assignments'][0]['category_id']==='8','Unchanged original category survives normalization and review');
- chatError(fn()=>$service->handle(array_replace($base,['turn_id'=>str_repeat('4',32),'revision'=>3]),'alice','house-one',array_replace($source,['revision'=>4]),$catalog),'chat_recipe_changed');
+ $prepared=$service->handle(array_replace($base,['turn_id'=>str_repeat('4',32),'revision'=>3]),'alice','house-one',array_replace($source,['revision'=>4]),$catalog);
+ checkChat(isset($prepared['draft']['recipe']),'A changed original does not block preparing the next save');
  // No context ranking or short-history optimization: all scoped facts/turns reach cooking reasoning.
  $facts=[];for($i=0;$i<26;$i++)$facts[]=['id'=>md5('fact'.$i),'person'=>'self','preference'=>'Likes ingredient'.$i.'.','household'=>null];
  $q=$pdo->prepare('INSERT INTO user_recipe_context(user_id,state_json) VALUES (?,?)');$q->execute(['prefs',json_encode(['revision'=>1,'facts'=>$facts])]);

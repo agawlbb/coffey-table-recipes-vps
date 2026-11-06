@@ -38,7 +38,7 @@ try {
  $call('step',['step_id'=>'1','checked'=>true,'revision'=>0]);
  $call('step',['step_id'=>'3','checked'=>true,'revision'=>0],'2',$c);
  expectCooking(count($service->snapshot('1')['sessions'][0]['completed'])===2,'Different steps merge independently');
- rejectCooking(fn()=>$call('step',['step_id'=>'1','checked'=>false,'revision'=>0]),409);
+ $call('step',['step_id'=>'1','checked'=>false,'revision'=>0]);
  $call('step',['step_id'=>'1','checked'=>false,'revision'=>1],'2',$c);
  expectCooking($service->snapshot('1')['sessions'][0]['completed']===['3'],'Unchecking propagates');
  $timer=['action_id'=>'10','deadline_ms'=>$now+9000000,'cancelled'=>false,'revision'=>0];
@@ -46,7 +46,7 @@ try {
  expectCooking(count($pushes)===1,'Initial timer uses WebSocket, not push');
  $timer['deadline_ms']=$now+10000000;$timer['revision']=1;$call('timer',$timer);
  expectCooking(count($pushes)===2 && $pushes[1][1]['session_id']===$id,'Timer edits silently target joined devices');
- rejectCooking(fn()=>$call('timer',$timer),409);
+ $call('timer',$timer);
  // Both owner and invited participants keep the session alive.
  $call('presence',['open'=>false]);$call('presence',['open'=>false],'1',$b);$call('presence',['open'=>false],'2',$c);
  $now+=6000001; expectCooking(count($service->snapshot('1')['sessions'])===1,'Running timer prevents automatic expiry');
@@ -92,7 +92,7 @@ try {
  $stopped=$native(['action_id'=>'10','cancelled'=>true,'revision'=>0,'expected_deadline_ms'=>$extended['deadline_ms']])['session']['timers'][0];
  expectCooking($stopped['cancelled'] && $stopped['extension_seconds']===0,'Notification Stop clears timer and remainder');
  $native(['action_id'=>'10','cancelled'=>false,'deadline_ms'=>$now+300000,'revision'=>3]);
- rejectCooking(fn()=>$native(['action_id'=>'10','cancelled'=>true,'revision'=>0,'expected_deadline_ms'=>$extended['deadline_ms']]),409);
+ $native(['action_id'=>'10','cancelled'=>true,'revision'=>0,'expected_deadline_ms'=>$extended['deadline_ms']]);
  // The menu can end a discoverable session without joining the current device.
  foreach ([['1',$b],['2',$c]] as $index=>[$ender,$device]) {
   $swipeId=str_repeat((string)($index+5),32);$create['session_id']=$swipeId;$create['operation_id']=bin2hex(random_bytes(16));

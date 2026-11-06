@@ -18,7 +18,7 @@ final class DataSocket
             if ($household!==null) throw new HttpError(422,'invalid_household','Account connections do not select a household.');
             $identity=($this->verify)($token);
             $q=$this->pdo->prepare('SELECT id,disabled FROM users WHERE firebase_uid=?'); $q->execute([$identity['uid']]);
-            $user=$q->fetch(PDO::FETCH_ASSOC);
+            $user=$q->fetch(PDO::FETCH_ASSOC); $q->closeCursor();
             if ($user && $user['disabled']) throw new HttpError(403,'account_disabled','Account unavailable.');
             if ($scope==='app' && $user && array_key_exists('email_verified',$identity)) {
                 $email=$identity['email'] ?? null; $verified=!empty($identity['email_verified']) ? 1 : 0;
@@ -30,7 +30,7 @@ final class DataSocket
         } elseif ($scope === 'cooking' || $scope === 'timers' || $scope === 'ai') {
             $identity = ($this->verify)($token);
             $q=$this->pdo->prepare('SELECT id,disabled FROM users WHERE firebase_uid=?'); $q->execute([$identity['uid']]);
-            $user=$q->fetch(PDO::FETCH_ASSOC);
+            $user=$q->fetch(PDO::FETCH_ASSOC); $q->closeCursor();
             if (!$user || $user['disabled']) throw new HttpError(403,'account_disabled','Account unavailable.');
             $actor=['household'=>null,'user'=>(string)$user['id'],'uid'=>$identity['uid'],'ha'=>false];
         } else throw new HttpError(422,'invalid_scope','Unknown connection scope.');
@@ -48,7 +48,7 @@ final class DataSocket
         $data=[];
         if ($part===null || $part==='account') {
             $q=$this->pdo->prepare('SELECT id,display_name,email,email_verified,account_role FROM users WHERE id=?');
-            $q->execute([$user]); $row=$q->fetch(PDO::FETCH_ASSOC);
+            $q->execute([$user]); $row=$q->fetch(PDO::FETCH_ASSOC); $q->closeCursor();
             $row['id']=(string)$row['id']; $row['email_verified']=(bool)$row['email_verified'];
             $h=new HouseholdService($this->pdo);
             $policy=(new ChildMode($this->pdo))->state(['uid'=>$actor['uid']]);

@@ -95,7 +95,7 @@ class ShoppingWireTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("image_base64", json.dumps(pushed))
         self.assertLess(len(json.dumps(pushed)), 4096)
 
-    async def test_app_ha_push_receipt_replay_and_revocation(self):
+    async def test_app_ha_push_last_update_and_revocation(self):
         import time
         self.assertEqual((await self.authenticate(self.app))["type"], "ready")
         ha = await self.connect()
@@ -104,6 +104,7 @@ class ShoppingWireTests(unittest.IsolatedAsyncioTestCase):
         body = {"revision": 0, "items": [milk], "base_items": [], "client_change_id": "stable-change", "edited_at_ms": int(time.time()*1000)}
         await self.app.send_json({"v": 1, "type": "request", "id": "save", "path": "/households/1/shopping-list", "body": body})
         response = await self.message(self.app)
+        self.assertEqual(response["data"]["items"], [milk])
         self.assertEqual(response["data"]["acknowledged_change_id"], "stable-change")
         self.assertEqual((await self.message(ha))["data"]["items"], [milk])
         await self.message(self.app)  # Own committed push.
@@ -111,7 +112,7 @@ class ShoppingWireTests(unittest.IsolatedAsyncioTestCase):
         self.app = await self.connect()
         self.assertEqual((await self.authenticate(self.app))["data"]["revision"], 1)
         await self.app.send_json({"v": 1, "type": "request", "id": "retry", "path": "/households/1/shopping-list", "body": body})
-        self.assertEqual((await self.message(self.app))["data"]["revision"], 1)
+        self.assertEqual((await self.message(self.app))["data"]["items"], [milk])
         await self.message(self.app)
         await self.message(ha)
         milk["checked"] = True

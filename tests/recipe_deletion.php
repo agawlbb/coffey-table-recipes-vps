@@ -38,7 +38,7 @@ foreach (['003_recipes.sql','005_recipe_categories.sql'] as $name) {
         $columns = [];
         foreach (explode("\n",$table[2]) as $line) {
             if (!preg_match('/^\s*([a-z][a-z_]+)\s+(BIGINT|INT|VARCHAR|TEXT|LONGTEXT|DECIMAL|DATETIME|BOOLEAN|ENUM)/',$line,$m)) continue;
-            $columns[] = $m[1].' '.($m[2]==='BIGINT' || $m[2]==='INT' || $m[2]==='BOOLEAN' ? 'INTEGER' : 'TEXT').($m[1]==='revision' ? ' DEFAULT 1' : '');
+            $columns[] = $m[1].' '.($m[1]==='id' ? 'INTEGER PRIMARY KEY' : ($m[2]==='BIGINT' || $m[2]==='INT' || $m[2]==='BOOLEAN' ? 'INTEGER' : 'TEXT')).($m[1]==='revision' ? ' DEFAULT 1' : '');
         }
         if ($table[1]==='recipes') {
             $columns = array_filter($columns,fn($c)=>!str_starts_with($c,'id '));
@@ -69,8 +69,7 @@ function checkTrash(bool $ok,string $message): void { global $checks; if (!$ok) 
 function rejectTrash(callable $action,int $status): void { try { $action(); } catch (HttpError $e) { checkTrash($e->status===$status,'Wrong error status'); return; } throw new RuntimeException('Expected rejection'); }
 rejectTrash(fn()=>$trash->delete('2','1','1',['revision'=>'1']),404);
 rejectTrash(fn()=>$trash->delete('1','1','3',['revision'=>'1']),404);
-rejectTrash(fn()=>$trash->delete('1','1','1',['revision'=>'0']),409);
-$deleted=$trash->delete('3','1','1',['revision'=>'1']);
+$deleted=$trash->delete('3','1','1',['revision'=>'0']);
 checkTrash($deleted['deleted_recipe_id']==='1' && str_ends_with($deleted['purge_after'],'Z'),'Delete response');
 checkTrash(abs(strtotime($deleted['purge_after'])-time()-30*86400)<3,'Recovery deadline');
 checkTrash($trash->delete('1','1','1',['revision'=>'1'])===$deleted,'Retry restarted expiry');
@@ -141,4 +140,15 @@ $categoryDraft['category_assignments']=[['label'=>'Meals','parent_label'=>'Meals
 $categorySaved=$editor->save('1','1','',$categoryDraft);
 checkTrash((string)$categorySaved['category_assignments'][0]['category_id']==='1','Self-named category proposal did not save as the root');
 checkTrash((int)$pdo->query('SELECT COUNT(*) FROM recipe_categories')->fetchColumn()===2,'Self-named category created a child');
+// A stale editor replaces current content, even when an intervening save removed its child rows.
+$last=$draft; unset($last['import_key']); $last['title']='Last update fixture';
+$last['steps']=[['id'=>'new-step','instruction'=>'Original instruction']];
+$base=$editor->save('1','1','',$last);
+$old=$read->detail('1','1',$base['id']);
+$new=$old; $new['steps']=[]; $new['title']='Earlier server save'; unset($new['revision']);
+$editor->save('1','1',$base['id'],$new);
+$old['title']='Last submitted save'; unset($old['revision']);
+$editor->save('1','1',$base['id'],$old);
+$final=$read->detail('1','1',$base['id']);
+checkTrash($final['title']==='Last submitted save' && count($final['steps'])===1,'Last update must overwrite the server and recreate replaced step rows');
 echo "$checks recipe deletion fixture checks passed.\n";

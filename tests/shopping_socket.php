@@ -43,8 +43,8 @@ try {
     $item=['id'=>'milk','name'=>'Milk','department'=>'','checked'=>false];
     $body=['revision'=>0,'items'=>[$item],'base_items'=>[],'client_change_id'=>'change1','edited_at_ms'=>(int)(microtime(true)*1000)];
     $saved=$socket->handle('alice','1',$path,$body);
-    checkSocket($saved['acknowledged_change_id']==='change1' && count($saved['items'])===1);
-    checkSocket($socket->handle('alice','1',$path,$body)['revision']===$saved['revision']);
+    checkSocket(count($saved['items'])===1);
+    checkSocket($socket->handle('alice','1',$path,$body)['items']===$saved['items']);
     checkSocket(count($socket->handle('alice','1',$path,null)['items'])===1);
         $connection=$connections->create('1');$token=$connection['token'];
     checkSocket($socket->authenticate($token,null)['household']==='1');
@@ -65,7 +65,7 @@ try {
         'client_change_id'=>'department1','edited_at_ms'=>(int)(microtime(true)*1000)];
     checkSocket($socket->handle('alice','1',$path,$config)['departments']===['Farm stand']);
     $stale=array_replace($config,['departments'=>['Supermarket'],'client_change_id'=>'department2']);
-    rejectSocket(fn()=>$socket->handle('alice','1',$path,$stale),409);
+    checkSocket($socket->handle('alice','1',$path,$stale)['departments']===['Supermarket']);
     checkSocket($socket->handle('alice','1',$path,$config)['departments']===['Farm stand']);
     $image = imagecreatetruecolor(4, 3);
     ob_start(); imagepng($image); $png = ob_get_clean(); imagedestroy($image);

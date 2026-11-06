@@ -45,7 +45,13 @@ $broadcast = static function (array $source) use (&$clients, $factory, $send): v
             try {
                 $service=$factory(); $actor=$service->authenticate($entry['token'],null,'app');
                 $send($entry['connection'],['type'=>'snapshot','household_id'=>null,'data'=>$service->appSnapshot($actor,$source['scope'])]);
-            } catch (Throwable $error) { $entry['connection']->close(); }
+            } catch (Throwable $error) {
+                $status=$error instanceof HttpError ? $error->status : 500;
+                $code=$error instanceof HttpError ? $error->errorCode : 'snapshot_failed';
+                error_log('App snapshot failed: '.get_class($error).' code='.$code.' driver='.($error instanceof PDOException ? ($error->errorInfo[1] ?? '') : ''));
+                $send($entry['connection'],['type'=>'error','status'=>$status,'error'=>['code'=>$code,'message'=>'Could not load your data. Reconnecting.']]);
+                $entry['connection']->close();
+            }
             continue;
         }
         if ($source['scope']==='cooking') {

@@ -7,7 +7,11 @@ import shopping_websocket as shopping
 class AppWireTests(unittest.IsolatedAsyncioTestCase):
     server_fixture = 'tests/fixtures/app_socket_server.php'
     asyncSetUp = shopping.ShoppingWireTests.asyncSetUp
-    asyncTearDown = shopping.ShoppingWireTests.asyncTearDown
+    async def asyncTearDown(self):
+        if any(self.id() in str(test) for test, _ in self._outcome.result.failures + self._outcome.result.errors):
+            self.log.seek(0)
+            print(self.log.read().decode(errors='replace'))
+        await shopping.ShoppingWireTests.asyncTearDown(self)
     connect = shopping.ShoppingWireTests.connect
     message = shopping.ShoppingWireTests.message
 
@@ -53,7 +57,7 @@ class AppWireTests(unittest.IsolatedAsyncioTestCase):
         peers=[self.app]+[await self.connect() for _ in range(3)]
         await asyncio.gather(*(self.auth(ws) for ws in peers))
         for i,ws in enumerate(peers):
-            response,pushes=await self.command(ws,'/households/1/meal-plan',dict(revision=i,operation='add',id=f'meal-{i}',kind='leftovers',date='2099-11-06'))
+            response,pushes=await self.command(ws,'/households/1/meal-plan',dict(revision=0,operation='add',id=f'meal-{i}',kind='leftovers',date='2099-11-06'))
             self.assertEqual(response['type'],'response',response)
             self.assertEqual(len(pushes[-1]['households']['1']['library']['responses']['/households/1/meal-plan']['entries']),i+1)
             for other in peers:
@@ -68,6 +72,19 @@ class AppWireTests(unittest.IsolatedAsyncioTestCase):
         results=await asyncio.gather(*(self.command(ws,'/me/name',dict(display_name=f'Name {i}'),request_id=str(i)) for i,ws in enumerate(peers)))
         for response,_ in results:
             self.assertEqual(response['type'],'response',response)
+
+    async def test_last_update_wins_and_delayed_removal_preserves_new_item(self):
+        await self.auth(self.app)
+        path='/households/1/shopping-list'
+        item=lambda id: dict(id=id,name='Milk',department='',checked=False)
+        response,_=await self.command(self.app,path,dict(items=[item('old-milk')]))
+        self.assertEqual(response['type'],'response',response)
+        response,_=await self.command(self.app,path,dict(revision=0,items=[item('old-milk'),item('new-milk')]))
+        self.assertEqual(response['type'],'response',response)
+        response,pushes=await self.command(self.app,path,dict(remove_ids=['old-milk']))
+        self.assertEqual(response['type'],'response',response)
+        self.assertEqual([i['id'] for i in response['data']['items']],['new-milk'])
+        self.assertEqual([i['id'] for i in pushes[-1]['households']['1']['shopping']['items']],['new-milk'])
 
     async def test_anonymous_app_connection_only_exposes_public_recipe(self):
         state=await self.auth(self.app,'')

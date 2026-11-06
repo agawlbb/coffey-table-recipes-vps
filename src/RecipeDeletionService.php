@@ -41,7 +41,6 @@ final class RecipeDeletionService
             if (!$attachment) throw new HttpError(404,'recipe_not_found','Recipe not in this household.');
             if ($body!==null) {
                 if ($attachment['removed_at']===null) {
-                    if ((string)($body['revision'] ?? '')!==(string)$row['revision']) throw new HttpError(409,'recipe_changed','This recipe changed. Reload it before deleting.');
                     $this->pdo->prepare('UPDATE recipe_households SET removed_at=UTC_TIMESTAMP(6) WHERE recipe_id=? AND household_id=?')->execute([$id,$householdId]);
                     $q=$this->pdo->prepare('SELECT COUNT(*) FROM recipe_households WHERE recipe_id=? AND removed_at IS NULL');
                     $q->execute([$id]);

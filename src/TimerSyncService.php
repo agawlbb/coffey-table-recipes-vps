@@ -72,11 +72,10 @@ final class TimerSyncService
         $device=self::identifier($body['installation_id']??null);
         $operation=self::identifier($body['operation_id']??null);
         $cancel=$body['cancelled']??false;
-        $expected=$body['revision']??0;
         $extension=$body['extension_seconds']??0;
         $extend=$body['extend']??false;
         if (!is_bool($extend) || !is_int($extension) || $extension<0 || $extension>604800 || ($extend && $cancel)) throw new HttpError(422,'invalid_timer','Invalid timer extension.');
-        if (!is_bool($cancel) || !is_int($expected) || $expected<0) throw new HttpError(422,'invalid_timer','Invalid timer state.');
+        if (!is_bool($cancel)) throw new HttpError(422,'invalid_timer','Invalid timer state.');
         $now=(int)floor(microtime(true)*1000);
         if (!$cancel && (!is_int($body['deadline_ms']??null) || ($body['deadline_ms']<=$now && ($extension<=0 || $extend || $body['deadline_ms']<$now-7*86400000)) || $body['deadline_ms']>$now+7*86400000
             || !is_string($body['title']??null) || trim($body['title'])==='' || mb_strlen($body['title'])>300)) {
@@ -94,14 +93,13 @@ final class TimerSyncService
                 $revision=(int)$old['revision']; $title=$old['title']; $deadline=(int)$old['deadline_ms'];
                 $source=$old['source_device']; $cancel=(bool)$old['cancelled']; $extension=(int)$old['extension_seconds'];
             } else {
-            if (($old ? (int)$old['revision'] : 0)!==$expected) throw new HttpError(409,'timer_conflict','This timer changed on another device. Reopen the timers and try again.');
             if ($cancel && !$old) throw new HttpError(404,'timer_missing','Timer not found.');
             if ($extend) {
                 if (!$old || (bool)$old['cancelled'] || (int)$old['extension_seconds']<=0 || (int)$old['deadline_ms']>$now || $body['deadline_ms']>$now+(int)$old['extension_seconds']*1000) throw new HttpError(409,'timer_extension_unavailable','The remaining time is no longer available.');
                 $extension=0;
             }
             if ($cancel) $extension=0;
-            $revision=$expected+1;
+            $revision=($old ? (int)$old['revision'] : 0)+1;
             $title=$cancel ? $old['title'] : trim($body['title']);
             $deadline=$cancel ? (int)$old['deadline_ms'] : $body['deadline_ms'];
             $source=$old ? $old['source_device'] : $device;

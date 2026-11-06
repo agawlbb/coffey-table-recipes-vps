@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 
-/** Atomic, revision-checked editing of a household recipe. */
+/** Atomic last-update-wins editing of a household recipe. */
 final class RecipeEditorService
 {
     public function __construct(private PDO $pdo, private HouseholdService $households, private string $mediaDirectory, private string $mediaUrl, private $categorizeBlank = null) {}
@@ -56,7 +56,7 @@ final class RecipeEditorService
         if (isset($seen[$id])) $this->invalid('Duplicate item identifier.');
         $seen[$id] = true;
         if (str_starts_with($id, 'new-')) return [];
-        if (!isset($existing[$id])) $this->invalid('An item no longer belongs to this recipe. Reload and try again.');
+        if (!isset($existing[$id])) return []; // Recreate rows replaced by an earlier save.
         return ['id' => $id];
     }
     public function save(string $userId, string $householdId, string $recipeId, array $body): array {
@@ -71,7 +71,6 @@ final class RecipeEditorService
             $title=$this->fields($body,['title'=>'!300'])['title'];
             if ($recipeId!=='') {
                 $current=(new RecipeService($this->pdo,$this->households))->detail($userId,$householdId,$recipeId);
-                if ((string)($body['revision'] ?? '')!==(string)$current['revision']) throw new HttpError(409,'recipe_changed','This recipe changed. Reload and try again.');
                 if ($current['household_count']>1 && ($body['confirm_shared_edit'] ?? false)!==true) throw new HttpError(409,'shared_confirmation_required','Confirm changes to this shared recipe.');
             }
             $catalog=(new RecipeService($this->pdo,$this->households))->editOptions($userId,$householdId)['categories'];
@@ -145,7 +144,6 @@ final class RecipeEditorService
             $q->execute([$householdId, $recipeId]);
             $revision = $q->fetchColumn();
             if ($revision === false) throw new HttpError(404, 'recipe_not_found', 'Recipe not found.');
-            if ((string) ($body['revision'] ?? '') !== (string) $revision) throw new HttpError(409, 'recipe_changed', 'This recipe was changed by someone else. Close the editor, reload the recipe, and try again.');
             $recipe = $this->fields($body, [
                 'title'=>'!300','description'=>'60000','original_language'=>'!35','measurement_system'=>'!enum:metric,us,mixed,unspecified',
                 'source_type'=>'40','source_url'=>'4000','source_title'=>'500','source_author'=>'300','source_reference'=>'60000',

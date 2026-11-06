@@ -60,20 +60,20 @@ final class MealPlanService
         return ['revision'=>(int)$state['revision'], 'time_zone'=>$state['time_zone'], 'today'=>$this->today($state), 'entries'=>$entries];
     }
 
-    /** One operation per revision: prevents one member overwriting another's plan. */
+    /** Apply the submitted operation to the current plan. */
     public function change(string $user, string $household, array $body): array {
         $this->households->membership($user,$household);
-        $revision=$body['revision'] ?? null; $operation=$body['operation'] ?? null;
-        if (!is_int($revision) || $revision < 0 || !in_array($operation,['add','move','remove'],true)) throw new HttpError(422,'invalid_plan','Invalid meal plan change.');
+        $operation=$body['operation'] ?? null;
+        if (!in_array($operation,['add','move','remove'],true)) throw new HttpError(422,'invalid_plan','Invalid meal plan change.');
         $id=$body['id'] ?? null;
         if (!is_string($id) || !preg_match('/^[a-zA-Z0-9_-]{1,80}$/D',$id)) throw new HttpError(422,'invalid_entry','Invalid meal entry.');
         $this->pdo->beginTransaction();
         try {
-            // Atomic compare-and-swap also serializes first-time household writes.
+            // Serialize household plan operations.
             $insert=$this->pdo->getAttribute(PDO::ATTR_DRIVER_NAME)==='sqlite' ? 'INSERT OR IGNORE' : 'INSERT IGNORE';
             $this->pdo->prepare("$insert INTO meal_plans (household_id,revision,time_zone) VALUES (?,0,'America/New_York')")->execute([$household]);
-            $q=$this->pdo->prepare('UPDATE meal_plans SET revision=revision+1 WHERE household_id=? AND revision=?');$q->execute([$household,$revision]);
-            if ($q->rowCount() !== 1) throw new HttpError(409,'plan_conflict','The meal plan changed. Review the updated plan and try again.');
+            $q=$this->pdo->prepare('UPDATE meal_plans SET revision=revision+1 WHERE household_id=?');$q->execute([$household]);
+            $revision=(int)$this->state($household)['revision'];
             $today=$this->today($this->state($household));
             $existing=$this->rows('SELECT * FROM meal_plan_entries WHERE household_id=? AND id=?',[$household,$id])[0] ?? null;
             $date=$operation==='remove' ? null : self::date($body['date'] ?? null);
@@ -98,7 +98,7 @@ final class MealPlanService
             } else $this->pdo->prepare('DELETE FROM meal_plan_entries WHERE household_id=? AND id=?')->execute([$household,$id]);
             $this->pdo->commit();
         } catch (Throwable $error) { if ($this->pdo->inTransaction()) $this->pdo->rollBack(); throw $error; }
-        return ['revision'=>$revision+1,'today'=>$today];
+        return ['revision'=>$revision,'today'=>$today];
     }
 
     private function recipe(string $household, mixed $id): array {
