@@ -40,6 +40,8 @@ checkData($call('/recipes',$body)['recipe']===$saved,'Lost response replays immu
 $edit=$saved; unset($edit['actions'][0]['duration_max_seconds']); $edit['title']='Edited soup';$edit['client_save_id']=str_repeat('b',32);
 $edited=$call('/recipes/'.$saved['id'],$edit)['recipe'];
 checkData($edited['title']==='Edited soup','Recipe edit');
+$repeated=$edit; $repeated['title']='A new explicit update';
+checkData($call('/recipes/'.$saved['id'],$repeated)['recipe']['title']==='A new explicit update','Edits apply again even when a client repeats its delivery ID');
 checkData((int)$edited['actions'][0]['duration_max_seconds']===180,'Omitted maximum preserves unchanged timer range');
 $badRange=$edited; $badRange['client_save_id']=str_repeat('f',32); $badRange['actions'][0]['duration_max_seconds']=30;
 rejectData(fn()=>$call('/recipes/'.$saved['id'],$badRange),422);

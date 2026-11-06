@@ -18,10 +18,11 @@ $pdo->commit();
 receiptCheck((new RecipeSaveReceipts($pdo,'1','1','',array_reverse($body,true)))->replay() === $saved);
 receiptCheck((new RecipeSaveReceipts($pdo,'2','1','',$body))->replay() === null);
 receiptCheck((new RecipeSaveReceipts($pdo,'1','2','',$body))->replay() === null);
-foreach ([array_replace($body,['title'=>'Different']), $body] as $i=>$changed) {
-    try { (new RecipeSaveReceipts($pdo,'1','1',$i ? '9' : '',$changed))->replay(); throw new RuntimeException('Reuse accepted'); }
+foreach ([array_replace($body,['title'=>'Different'])] as $changed) {
+    try { (new RecipeSaveReceipts($pdo,'1','1','',$changed))->replay(); throw new RuntimeException('Reuse accepted'); }
     catch (HttpError $e) { receiptCheck($e->status === 409); }
 }
+receiptCheck((new RecipeSaveReceipts($pdo,'1','1','9',$body))->replay() === null);
 foreach ([12, [], '', 'short'] as $bad) {
     try { new RecipeSaveReceipts($pdo,'1','1','',['client_save_id'=>$bad]); throw new RuntimeException('Invalid key accepted'); }
     catch (HttpError $e) { receiptCheck($e->status === 422); }

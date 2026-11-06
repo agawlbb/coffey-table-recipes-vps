@@ -34,3 +34,7 @@ cooking websocket checks pass against disposable fixtures. The optional actual
 Home Assistant client check is separate; no HA installation or production state
 is changed by these tests. App-side validation is in docs/simple-offline-saves.md
 in the app repository.
+
+Creation alone uses persistent delivery receipts. Edits never replay an old
+receipt instead of updating the server: explicitly resubmitting an offline
+edit is a new write and must overwrite what is there now.

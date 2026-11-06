@@ -7,7 +7,8 @@ final class RecipeSaveReceipts
     private mixed $id;
     private string $hash;
     public function __construct(private PDO $pdo, private string $user, private string $household, string $recipe, array $body) {
-        $this->id = $body['client_save_id'] ?? null;
+        // Only creation needs repeat-delivery identity. Every edit applies anew.
+        $this->id = $recipe === '' ? ($body['client_save_id'] ?? null) : null;
         if ($this->id !== null && (!is_string($this->id) || !preg_match('/^[A-Za-z0-9_-]{16,80}$/D', $this->id))) {
             throw new HttpError(422, 'invalid_save_id', 'Invalid save identifier.');
         }
