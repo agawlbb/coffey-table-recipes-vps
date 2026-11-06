@@ -124,12 +124,28 @@ final class ShoppingListService
             $q->execute([$household]);
             $old = $this->readState($user, $household);
             $changeId=$body['client_change_id'] ?? null;
+            // Local edits address individual items, preserving unrelated server items.
+            if (isset($body['upsert_items']) || isset($body['order'])) {
+                if (!is_array($body['upsert_items']??[]) || !is_array($body['order']??[])) throw new HttpError(422,'invalid_list','Invalid shopping change.');
+                $items=$old['items'];
+                foreach ($body['upsert_items']??[] as $item) {
+                    if(!is_array($item) || !is_string($item['id']??null)) throw new HttpError(422,'invalid_item','Invalid shopping item.');
+                    $index=array_search($item['id'],array_column($items,'id'),true);
+                    if($index===false) $items[]=$item; else $items[$index]=$item;
+                }
+                if(isset($body['order'])) {
+                    foreach($body['order'] as $id) if(!is_string($id)) throw new HttpError(422,'invalid_item','Invalid shopping order.');
+                    $rank=array_flip($body['order']);
+                    usort($items,fn($a,$b)=>($rank[$a['id']]??PHP_INT_MAX)<=>($rank[$b['id']]??PHP_INT_MAX));
+                }
+                $body['items']=$items;
+            }
             // A queued removal changes only these item identities, never an old list.
             if (isset($body['remove_ids'])) {
                 $ids=$body['remove_ids'];
                 if (!is_array($ids) || count($ids)>500 || array_filter($ids,fn($id)=>!is_string($id) || !preg_match('/^[a-zA-Z0-9_-]{1,80}$/D',$id)))
                     throw new HttpError(422,'invalid_item','Choose valid shopping items.');
-                $body=['items'=>array_values(array_filter($old['items'],fn($item)=>!in_array($item['id'],$ids,true)))];
+                $body['items']=array_values(array_filter($body['items']??$old['items'],fn($item)=>!in_array($item['id'],$ids,true)));
             }
             $departments = array_key_exists('departments', $body) ? $body['departments'] : $old['departments'];
             if (!is_array($departments) || array_values($departments) !== $departments || count($departments) > 50) {

@@ -91,6 +91,13 @@ final class HouseholdSnapshot {
                 foreach ($people as $person) $members[]=['id'=>$person['id'],'display_name'=>$person['display_name'],'user_id'=>$person['user_id'],'favorite'=>isset($favoriteMap[$id][$person['id']])];
                 $responses["$rootPath/recipes/$id/favorites"]=['people'=>$members,'current_person_id'=>$current];
             } unset($recipe);
+            $trash=new RecipeDeletionService($this->pdo,$this->households); $deleted=[]; $offset=0;
+            do {
+                $page=$trash->recentlyDeleted($user,$household,$offset);
+                array_push($deleted,...$page['recipes']);
+                $offset=$page['next_offset'];
+            } while($offset!==null);
+            $responses["$rootPath/recipes/deleted"]=['recipes'=>$deleted,'next_offset'=>null];
             $responses["$rootPath/restaurants"]=(new RestaurantService($this->pdo,$this->households))->read($user,$household);
             $responses["$rootPath/people"]=['people'=>$people];
             if (class_exists('MealPlanService')) {

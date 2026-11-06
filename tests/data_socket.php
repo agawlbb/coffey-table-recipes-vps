@@ -53,7 +53,8 @@ checkData($call('/recipes/'.$saved['id'])['recipe']['title']==='Last save wins',
 $plan=['revision'=>0,'operation'=>'add','id'=>'meal1','date'=>'2099-01-01','kind'=>'recipe','recipe_id'=>$saved['id']];
 checkData($call('/meal-plan',$plan)['revision']===1,'Meal plan write');
 checkData(count($call('/meal-plan?from=2099-01-01&to=2099-01-02')['entries'])===1,'Meal plan read');
-rejectData(fn()=>$call('/meal-plan',$plan),409);
+$call('/meal-plan',$plan);
+checkData(count($call('/meal-plan?from=2099-01-01&to=2099-01-02')['entries'])===1,'Repeated meal delivery keeps one meal');
 $plan['revision']=1;$plan['id']='meal2';unset($plan['date']);
 rejectData(fn()=>$call('/meal-plan',$plan),422);
 $device=str_repeat('d',32);

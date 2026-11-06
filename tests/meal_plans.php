@@ -89,3 +89,12 @@ $entry=array_values(array_filter($service->read('1','1',$future,$future)['entrie
 checkMeal($entry['title']==='Cafe'&&$entry['restaurant_id']==='cafe','Restaurant history survives list removal');
 rejectMeal(fn()=>changeMeal('add','foreign-restaurant',$future,['kind'=>'restaurant','restaurant_id'=>'cafe']),422);
 echo "Restaurant isolation, conflict and name retention passed.\n";
+
+// Re-delivery and an explicitly submitted offline move use arrival order.
+$service->change('2','1',['operation'=>'add','id'=>'delivery','kind'=>'leftovers','date'=>'2026-10-25']);
+$service->change('2','1',['operation'=>'add','id'=>'delivery','kind'=>'leftovers','date'=>'2026-10-26']);
+checkMeal((int)$pdo->query("SELECT COUNT(*) FROM meal_plan_entries WHERE id='delivery'")->fetchColumn()===1,'repeated delivery does not duplicate a meal');
+$service->change('2','1',['operation'=>'remove','id'=>'delivery']);
+$service->change('2','1',['operation'=>'remove','id'=>'delivery']);
+$service->change('2','1',['operation'=>'move','id'=>'delivery','kind'=>'leftovers','date'=>'2026-10-27']);
+checkMeal($pdo->query("SELECT plan_date FROM meal_plan_entries WHERE id='delivery'")->fetchColumn()==='2026-10-27','submitted offline move recreates its meal after remote removal');

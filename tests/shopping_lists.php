@@ -205,3 +205,10 @@ $saved = $service->save('1','1',['revision'=>$saved['revision'],'items'=>[]]);
 $saved = $service->save('1','1',['revision'=>$saved['revision'],'items'=>[array_replace($legacy,['id'=>'new-photo-item'])]]);
 checkShopping(!isset($saved['items'][0]['photo']));
 echo "Shopping photo metadata, legacy omission, clearing and concurrent field preservation passed\n";
+
+// An offline item edit does not replace unrelated items added on another device.
+$service->save('1','1',['items'=>[memoryItem('first','Apples'),memoryItem('remote','Bread')]]);
+$patched=$service->save('1','1',['upsert_items'=>[memoryItem('first','Pears'),memoryItem('local','Milk')],'remove_ids'=>['absent'],'order'=>['local','first']]);
+checkShopping(array_column($patched['items'],'id')===['local','first','remote']);
+checkShopping($patched['items'][1]['name']==='Pears');
+echo "Item patches preserve unrelated server additions passed\n";

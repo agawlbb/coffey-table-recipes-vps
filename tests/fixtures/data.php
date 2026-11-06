@@ -30,7 +30,7 @@ foreach (['003_recipes.sql','005_recipe_categories.sql'] as $name) {
             if (!preg_match('/^\s*([a-z][a-z_]+)\s+(BIGINT|INT|VARCHAR|TEXT|LONGTEXT|DECIMAL|DATETIME|BOOLEAN|ENUM)/',$line,$m)) continue;
             $columns[]=$m[1].' '.($m[1]==='id'?'INTEGER PRIMARY KEY':($m[1]==='revision'?'INTEGER DEFAULT 1':(in_array($m[2],['BIGINT','INT','BOOLEAN'])?'INTEGER':'TEXT')));
         }
-        if ($table[1]==='recipes') array_push($columns,'deleted_at TEXT','trash_household_id INTEGER','deleted_by_user_id INTEGER');
+        if ($table[1]==='recipes') array_push($columns,'deleted_at TEXT','purge_after TEXT','trash_household_id INTEGER','deleted_by_user_id INTEGER');
         $pdo->exec('CREATE TABLE '.$table[1].' ('.implode(',',$columns).')');
     }
 }

@@ -77,8 +77,8 @@ final class MealPlanService
             $today=$this->today($this->state($household));
             $existing=$this->rows('SELECT * FROM meal_plan_entries WHERE household_id=? AND id=?',[$household,$id])[0] ?? null;
             $date=$operation==='remove' ? null : self::date($body['date'] ?? null);
-            if ($operation!=='add' && !$existing) throw new HttpError(404,'meal_not_found','Meal no longer on the plan.');
-            if ($operation==='add' && $existing) throw new HttpError(409,'entry_exists','This meal was already added. Refresh the plan.');
+            if ($operation==='move' && !$existing && isset($body['kind'])) $operation='add';
+            if ($operation==='move' && !$existing) throw new HttpError(404,'meal_not_found','Meal no longer on the plan.');
             if ((($date !== null && $date < $today) || ($existing && $existing['plan_date'] !== null && $existing['plan_date'] < $today)) && ($body['confirm_past'] ?? false) !== true)
                 throw new HttpError(409,'past_confirmation_required','Change this past meal? This will update your cooking history.');
             if ($operation==='add') {
@@ -91,8 +91,14 @@ final class MealPlanService
                     if ($restaurant===null) throw new HttpError(422,'restaurant_not_found','Choose an available household restaurant.');
                 }
                 $title=$recipe['title'] ?? ($kind==='leftovers' ? 'Leftovers' : ($restaurant['name']??'Restaurant'));
-                $this->pdo->prepare('INSERT INTO meal_plan_entries (household_id,id,plan_date,kind,recipe_id,recipe_identity,title,recipe_revision,restaurant_id,restaurant_logo_reference) VALUES (?,?,?,?,?,?,?,?,?,?)')
-                    ->execute([$household,$id,$date,$kind,$recipe['id'] ?? null,$recipe['id'] ?? null,$title,$recipe['revision'] ?? null,$restaurant['id']??null,$restaurant['logo_reference']??null]);
+                $values=[$date,$kind,$recipe['id']??null,$recipe['id']??null,$title,$recipe['revision']??null,$restaurant['id']??null,$restaurant['logo_reference']??null];
+                if ($existing) {
+                    $this->pdo->prepare('UPDATE meal_plan_entries SET plan_date=?,kind=?,recipe_id=?,recipe_identity=?,title=?,recipe_revision=?,restaurant_id=?,restaurant_logo_reference=? WHERE household_id=? AND id=?')
+                        ->execute([...$values,$household,$id]);
+                } else {
+                    $this->pdo->prepare('INSERT INTO meal_plan_entries (household_id,id,plan_date,kind,recipe_id,recipe_identity,title,recipe_revision,restaurant_id,restaurant_logo_reference) VALUES (?,?,?,?,?,?,?,?,?,?)')
+                        ->execute([$household,$id,...$values]);
+                }
             } elseif ($operation==='move') {
                 $this->pdo->prepare('UPDATE meal_plan_entries SET plan_date=? WHERE household_id=? AND id=?')->execute([$date,$household,$id]);
             } else $this->pdo->prepare('DELETE FROM meal_plan_entries WHERE household_id=? AND id=?')->execute([$household,$id]);
