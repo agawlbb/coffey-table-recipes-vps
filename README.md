@@ -464,3 +464,18 @@ setup completed; maintenance setup corrected that brief ordering gap. Runtime
 DDL privileges were not broadened. Existing source-copy/restart deployment passed
 socket and CPU policy checks (`CpuShares=1024`, unlimited `cpu.max`); public health
 passed. No app build or hosted Flutter deployment was made.
+
+
+### 2026-11-06 — SQLite-client support deployed
+
+At the owner's request, deployed `feature/last-update-wins` implementation
+`8a51af582b09e443659eca14d646691e1ced7196` using the existing source-copy/restart
+deployer. No schema migration or image build. All 63 checked deployed PHP,
+entry-point, lockfile and association files match; installed Compose matches.
+Private configuration hashes are unchanged. HTTPS health and both native
+association endpoints return HTTP 200. CPU policy remains shares 1024 with
+unlimited cpu.max. No live user-data write was used for verification.
+
+App tag `v2.8.0`, version 2.8.0/build63, is being built separately for iOS.
+Android and main integration remain deferred. This deployment does not merge
+or delete either working branch.
