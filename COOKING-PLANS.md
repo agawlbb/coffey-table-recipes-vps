@@ -152,3 +152,14 @@ rejected unknown recipe references, and shared prep snapshots. The real local
 WebSocket generation/shift/feedback case passed with added prep in its fake
 provider. PHP syntax and changed-file diff review passed. Flutter's focused UI
 checks and their limits are recorded in the companion document.
+
+Hosted implementation `83f4614` deployed through the existing privileged
+source-copy/restart procedure. Pre-deploy source matched the previous task
+revision; all 66 checked installed source files matched the new task source.
+HTTPS health returned 200/ok; CpuShares=1024 and unlimited cpu.max were retained.
+At the user's explicit request, the specifically reported current soup/bread plan
+was ended using a maintenance installation identity so normal cancellation delivery
+covers all joined devices. Its single matching cached result was removed. The
+normal ended-session tombstone is retained for reconciliation; the plan is absent
+from active sessions. Recipes, personal context and unrelated sessions were not
+changed. No schema migration, app build, release or main integration ran.
