@@ -109,3 +109,13 @@ range/dependency checks passed; broiler watching did not overlap soup finishing.
 Total tokens were respectively 6,222, 11,702 and 5,904. These bounded examples do
 not establish reliability for every meal. No production recipes/data were used
 as development fixtures and no full test suite was run.
+
+Hosted follow-up: implementation `bf0cf2c` deployed through the existing privileged
+source-copy/restart procedure. All 66 checked installed source files matched;
+HTTPS health returned 200/ok; CpuShares=1024 and unlimited cpu.max were verified.
+No schema or recipe maintenance was performed. At the user's explicit request,
+the reported old soup/bread session was ended through the normal cancellation
+path and its single matching saved AI result removed. The normal ended-session
+tombstone remains for device reconciliation; it is absent from active plans.
+Cancellation delivery was requested for every joined device, including the
+original device. Recipes, private cooking context and unrelated plans were retained.
