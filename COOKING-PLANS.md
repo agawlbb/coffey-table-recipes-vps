@@ -61,3 +61,25 @@ call or production-data mutation is used for development tests.
 
 No live-provider evaluation, app build, release or main integration was performed.
 Native alarm reception is source-reviewed and requires later device acceptance.
+
+## Hosted backend — 2026-11-07
+
+Implementation `38db9ec` is deployed at ctr.coffeybean.com using the existing
+source-copy/restart path. Before deployment, hosted PHP/entry-point/lock files
+matched the existing main checkout; no unrelated hosted source was overwritten.
+The first deploy attempt stopped at filesystem ownership after stopping the
+service. The privileged retry copied source; its immediate probe exposed a
+read-permission problem on the newly created CookingPlans.php. Its deployed and
+working-copy permissions were corrected to 0644 and the service restarted.
+No deployment tooling or application behavior was changed to address ownership.
+
+After recovery, all 66 checked installed PHP/entry/lock files matched task source,
+public HTTPS `/health` returned 200 with status `ok`, and the container was running
+with zero restarts. CPU settings remained CpuShares=1024 and `cpu.max=max 100000`.
+Private configuration and persistent state remained outside the copied code tree;
+no schema migration, recipe maintenance, live AI call or app publication ran.
+An attempted private-file fingerprint inventory was incomplete because a private
+backup-path record was unreadable; no pre/post private-hash claim is made.
+
+The task remains separate from main. Native delivery and real cooking quality
+still require device/user acceptance after an explicitly requested app build.
