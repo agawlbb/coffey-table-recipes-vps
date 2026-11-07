@@ -42,6 +42,42 @@ class AiWireTests(unittest.IsolatedAsyncioTestCase):
             if event['type'] in ('response', 'error'):
                 return event, events
 
+    async def test_combined_plan_broadcast_shift_and_feedback(self):
+        import time
+        import uuid
+        dinner = int(time.time() * 1000) + 8 * 3600000
+        device = uuid.uuid4().hex
+        session = uuid.uuid4().hex
+        with closing(sqlite3.connect(self.database)) as db:
+            db.execute("INSERT INTO meal_plan_entries(id,household_id,kind,recipe_id,recipe_identity,title,plan_date,created_at) VALUES('soup',1,'recipe',1,1,'Soup','2026-11-07','2026-11-07')")
+            db.commit()
+        cooking = await self.connect()
+        await self.auth(cooking, scope='cooking', household=None)
+        await self.auth(self.app, scope='ai')
+        body = dict(session_id=session, installation_id=device, date='2026-11-07', entry_ids=['soup'], dinner_at=dinner)
+        await self.send_ai('/households/1/cooking-plan', body)
+        reply, _ = await self.result()
+        self.assertEqual(reply['type'], 'response', reply)
+        self.assertIsNone(reply['data']['session']['started_at'])
+        snapshot = await self.message(cooking)
+        self.assertEqual(snapshot['data']['sessions'][0]['id'], session)
+        shifted = await data.DataWireTests.request(self, cooking, f'/me/cooking-sessions/{session}/dinner',
+            dict(installation_id=device, operation_id=uuid.uuid4().hex, dinner_at=dinner + 3600000))
+        self.assertEqual(shifted['type'], 'response', shifted)
+        self.assertEqual(shifted['data']['session']['recipe'], reply['data']['session']['recipe'])
+        self.assertEqual((await self.message(cooking))['data']['sessions'][0]['dinner_at'], dinner + 3600000)
+        await self.send_ai('/households/1/cooking-plan', dict(action='feedback', session_id=session,
+            installation_id=device, turn_id=uuid.uuid4().hex, message='I chop slowly.', viewed_step='dish0:1'))
+        feedback, _ = await self.result()
+        self.assertEqual(feedback['type'], 'response', feedback)
+        self.assertTrue(feedback['data']['plan_changed'])
+        updated = (await self.message(cooking))['data']['sessions'][0]
+        self.assertEqual(updated['recipe']['steps'][0]['offset_seconds'], -7200)
+        self.assertNotIn('messages', updated)
+        self.assertNotIn('context_updates', updated)
+        with closing(sqlite3.connect(self.database)) as db:
+            self.assertIn('Chops slowly.', db.execute('SELECT state_json FROM user_recipe_context WHERE user_id=1').fetchone()[0])
+
     async def test_progress_heartbeats_and_clarification_on_same_connection(self):
         with closing(sqlite3.connect(self.database)) as db:
             initial_count = db.execute('SELECT COUNT(*) FROM recipes').fetchone()[0]

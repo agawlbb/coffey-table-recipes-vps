@@ -6,7 +6,7 @@ final class AiService {
 
     public static function matches(string $path): bool {
         $route=parse_url($path,PHP_URL_PATH);
-        return is_string($route) && (preg_match('#^/households/[1-9][0-9]*/(?:recipe-chat|recipe-import|recipe-photo|recipe-category|category-image|recipes/[1-9][0-9]*/variation)$#D',$route)
+        return is_string($route) && (preg_match('#^/households/[1-9][0-9]*/(?:cooking-plan|recipe-chat|recipe-import|recipe-photo|recipe-category|category-image|recipes/[1-9][0-9]*/variation)$#D',$route)
             || preg_match('#^/admin/parent-categories(?:/[1-9][0-9]*/category-image)?$#D',$route));
     }
 
@@ -47,6 +47,7 @@ final class AiService {
             if (!is_string($id) || !preg_match('/^[1-9][0-9]{0,18}$/D',$id)) throw new HttpError(422,'invalid_category','Choose a category.');
             return ['image_url'=>$images->ensure($id,$user,$household)];
         }
+        if ($part==='cooking-plan') return (new CookingPlans($this->pdo,$config,$this->storage,$this->transport))->handle($user,$household,$body);
         $options=$recipes->editOptions($user,$household);
         if ($part==='recipe-category') {
             if (!is_string($body['title']??null)) throw new HttpError(422,'invalid_recipe','Enter a recipe title.');

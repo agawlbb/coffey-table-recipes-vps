@@ -166,7 +166,7 @@ $worker->onMessage = static function (TcpConnection $c, string $text) use (&$cli
                         $send($c,$event+['id'=>$id]);
                     },
                     static function(bool $success,?array $data=null) use ($source,$broadcast,$body,$scheduleImages,$app,&$terminal,$send,$c,$id): void {
-                        if ($success && $body!==null) { $broadcast($source); if ($data!==null) $scheduleImages($source,$data); }
+                        if ($success && $body!==null) { if (str_ends_with($source['path']??'', '/cooking-plan') || isset($data['session']['combined'])) $source['scope']='cooking'; $broadcast($source); if ($data!==null) $scheduleImages($source,$data); }
                         if ($app && $terminal!==null) $send($c,$terminal+['id'=>$id]);
                     });
                 return;

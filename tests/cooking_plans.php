@@ -1,0 +1,82 @@
+<?php
+declare(strict_types=1);
+$directory=sys_get_temp_dir().'/ctr-plans-'.bin2hex(random_bytes(6));
+putenv('CTR_STORAGE='.$directory);
+require __DIR__.'/fixtures/data.php';
+require __DIR__.'/fixtures/context_database.php';
+contextTestLocks($pdo,$directory.'/locks');
+$checks=0;
+function planCheck(bool $ok,string $why): void { global $checks; if (!$ok) throw new RuntimeException($why); $checks++; }
+function planReject(callable $run,int $status): void { try {$run();} catch(HttpError $e) {planCheck($e->status===$status,'Expected '.$status.', got '.$e->status);return;} throw new RuntimeException('Expected rejection'); }
+$now=(int)(microtime(true)*1000); $device=str_repeat('a',32);
+$pdo->exec("INSERT INTO household_memberships VALUES(1,2,'member'); INSERT INTO household_people VALUES(20,1,2,'Bob');
+INSERT INTO recipe_step_actions(id,household_id,recipe_id,step_id,position,label,duration_seconds) VALUES(10,1,1,1,1,'Simmer',60);
+INSERT INTO recipe_steps(id,household_id,recipe_id,position,instruction) VALUES(3,1,1,2,'Rest before serving');
+INSERT INTO meal_plan_entries(id,household_id,kind,recipe_id,recipe_identity,title,plan_date,created_at) VALUES('soup',1,'recipe',1,1,'Soup','2026-11-07','2026-11-07'),('second',1,'recipe',1,1,'Soup again','2026-11-07','2026-11-07');");
+$calls=0;$inputs=[];$feedback=false;$malformed=false;$updates=[];
+$transport=function($payload)use(&$calls,&$inputs,&$feedback,&$malformed,&$updates) {
+    $calls++;$input=json_decode($payload['input'][0]['content'],true);$inputs[]=$input;
+    $timeline=[];
+    foreach ($input['recipe']['steps'] as $i=>$step) $timeline[]=['step_id'=>(string)$step['id'],'offset_seconds'=>[-3600,-600,-3300,-300][$i]];
+    if ($malformed) array_pop($timeline);
+    $reply=['message'=>'Cook the dishes together; allow time to rest.','timeline'=>$feedback?null:$timeline,'context_updates'=>$updates];
+    return ['status'=>200,'body'=>json_encode(['status'=>'completed','output'=>[['content'=>[['type'=>'output_text','text'=>json_encode($reply)]]]]])];
+};
+$service=new CookingPlans($pdo,['api_key'=>'fixture-only','model'=>'fixture'],$directory,$transport);
+$body=['date'=>'2026-11-07','entry_ids'=>['soup','second'],'session_id'=>str_repeat('1',32),'installation_id'=>$device,'dinner_at'=>$now+8*3600000];
+$sessions=new CookingSessions($pdo,null,null,function()use(&$now){return $now;});
+$change=function($id,$action,$body=[])use($sessions,$device) {return $sessions->request('1','alice','/me/cooking-sessions/'.$id.'/'.$action,$body+['installation_id'=>$device,'operation_id'=>bin2hex(random_bytes(16))])['session'];};
+try {
+    $generated=$service->handle('1','1',$body);$s=$generated['session'];$id=$s['id'];
+    planCheck(!$generated['reused'] && $calls===1,'Initial plan calls AI');
+    planCheck(count($s['recipe']['steps'])===4 && count(array_unique(array_column($s['recipe']['steps'],'id')))===4,'Duplicate dishes keep distinct step identities');
+    planCheck($s['recipe']['steps'][0]['instruction']==='Simmer' && !isset($s['recipe']['source_text']),'Instructions preserved; private sources excluded');
+    planCheck(array_column($s['recipe']['steps'],'id')===['dish0:1','dish1:1','dish0:3','dish1:3'],'Overlapping dish steps are interleaved in schedule order');
+    planCheck($s['started_at']===null,'Generating and opening do not start cooking');
+    $second=$service->handle('1','1',array_replace($body,['session_id'=>str_repeat('2',32),'entry_ids'=>['second','soup'],'dinner_at'=>$body['dinner_at']+3600000]));
+    planCheck($second['reused'] && $calls===1 && $second['session']['completed']===[],'Dish selection order and dinner time changes reuse plan with fresh progress');
+    $service->handle('1','1',$body);planCheck($calls===1,'Retry generation does not spend tokens');
+    $now+=4*3600000;
+    planCheck(count($sessions->snapshot('1')['sessions'])===2,'Morning plan survives ordinary idle timeout');
+    $moved=$change($id,'dinner',['dinner_at'=>$body['dinner_at']+7200000]);
+    planCheck($moved['dinner_at']===$body['dinner_at']+7200000 && $calls===1,'Dinner change moves target without AI');
+    planCheck($moved['recipe']===$s['recipe'],'Dinner shift preserves relative timeline and source content');
+    $checked=$change($id,'step',['step_id'=>$s['recipe']['steps'][0]['id'],'checked'=>true]);
+    planCheck($checked['started_at']===$now,'Completing any step starts cooking');
+    $change($id,'share',['person_id'=>'20']);
+    $feedback=true;$updates=[['action'=>'add','id'=>null,'person'=>'self','preference'=>'Chops slowly.','evidence'=>'I chop slowly']];
+    $fb=['action'=>'feedback','session_id'=>$id,'installation_id'=>$device,'turn_id'=>str_repeat('3',32),'message'=>'I chop slowly','viewed_step'=>$s['recipe']['steps'][1]['id']];
+    $result=$service->handle('1','1',$fb);
+    planCheck(!$result['plan_changed'] && count($result['messages'])===2,'Feedback can learn without changing current plan');
+    planCheck(end($inputs)['completed']===[$s['recipe']['steps'][0]['id']] && isset(end($inputs)['timers'],end($inputs)['now_ms']),'Feedback includes fresh server progress and time');
+    $service->handle('1','1',$fb);planCheck($calls===2,'Feedback retry reuses saved response');
+    $ownerContext=new RecipeUserContext($pdo,$directory,'1');planCheck(count($ownerContext->forHousehold('1'))===1,'Feedback saved for author');$ownerContext->close();
+    $otherContext=new RecipeUserContext($pdo,$directory,'2');planCheck($otherContext->forHousehold('1')===[],'Other participants do not inherit personal context');$otherContext->close();
+    $history=$service->handle('2','1',['action'=>'history','session_id'=>$id,'installation_id'=>str_repeat('b',32)]);
+    planCheck($history['messages']===[],'Feedback conversations remain private to author');
+    $key=CookingPlans::progressKey($sessions->planSession('1',$id));
+    $change($id,'step',['step_id'=>$s['recipe']['steps'][1]['id'],'checked'=>true]);
+    $timeline=array_map(fn($step)=>['step_id'=>(string)$step['id'],'offset_seconds'=>-7200],$s['recipe']['steps']);
+    $stale=$sessions->updatePlan('1',$id,$device,str_repeat('4',32),$key,['message'=>'Adjusted','timeline'=>$timeline]);
+    planCheck($stale['progress_changed'] && !$stale['plan_changed'],'Delayed AI cannot overwrite newer progress');
+    $change($id,'timer',['action_id'=>'dish0:10','deadline_ms'=>$now+60000,'cancelled'=>false]);
+    $latest=$sessions->planSession('1',$id);$key=CookingPlans::progressKey($latest);
+    $changed=$sessions->updatePlan('1',$id,$device,str_repeat('5',32),$key,['message'=>'Adjusted','timeline'=>$timeline]);
+    planCheck($changed['session']['timers']===array_values($latest['timers']),'Feedback keeps running timer deadlines unchanged');
+    planCheck($changed['plan_changed'] && count($changed['session']['completed'])===2,'Valid feedback adjusts remaining work and preserves completion');
+    foreach($changed['session']['recipe']['steps'] as $step) if(in_array($step['id'],$latest['completed'],true)) planCheck($step['offset_seconds']===array_column($latest['recipe']['steps'],'offset_seconds','id')[$step['id']],'Completed schedule preserved');
+    $feedback=false;$updates=[];
+    $fresh=$service->handle('1','1',array_replace($body,['session_id'=>str_repeat('6',32)]));
+    planCheck(!$fresh['reused'] && count(end($inputs)['cooking_context'])===1,'Changed personal context invalidates cached plan');
+    $pdo->exec("UPDATE recipe_steps SET instruction='Simmer gently' WHERE id=1");
+    $malformed=true;planReject(fn()=>$service->handle('1','1',array_replace($body,['session_id'=>str_repeat('7',32)])),502);
+    planCheck(!in_array(str_repeat('7',32),array_column($sessions->snapshot('1')['sessions'],'id'),true),'Malformed AI cannot create partial session');
+    planReject(fn()=>$service->handle('2','2',array_replace($body,['session_id'=>str_repeat('8',32)])),422);
+    $now=$body['dinner_at']+3600001;
+    $remaining=array_column($sessions->snapshot('1')['sessions'],'id');
+    planCheck(!in_array(str_repeat('6',32),$remaining,true),'Unstarted plan expires one hour after dinner');
+    echo "$checks cooking-plan checks passed\n";
+} finally {
+    $it=new RecursiveIteratorIterator(new RecursiveDirectoryIterator($directory,FilesystemIterator::SKIP_DOTS),RecursiveIteratorIterator::CHILD_FIRST);
+    foreach($it as $p) {if($p->isDir()) rmdir($p->getPathname()); else unlink($p->getPathname());} rmdir($directory);
+}

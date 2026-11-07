@@ -20,6 +20,15 @@ $transport=static function(array $payload): array {
     // Deliberately slower than the wire test's ping deadline: proves provider work cannot block sockets.
     usleep(1200000);
     if (is_string($payload['input']??null) && str_contains($payload['input'],'"category":"Failure"')) return ['status'=>503,'body'=>'{}'];
+    if (($payload['text']['format']['name']??'')==='cooking_plan') {
+        $input=json_decode($payload['input'][0]['content'],true);
+        $timeline=[];
+        foreach ($input['recipe']['steps'] as $step) $timeline[]=['step_id'=>(string)$step['id'],'offset_seconds'=>($input['mode']==='feedback'?-7200:-3600)];
+        $updates=($input['message']??'')==='I chop slowly.' ? [['action'=>'add','id'=>null,'person'=>'self','preference'=>'Chops slowly.','evidence'=>'I chop slowly.']] : [];
+        return ['status'=>200,'body'=>json_encode(['status'=>'completed','output'=>[['content'=>[['type'=>'output_text','text'=>json_encode([
+            'message'=>'Allow time to prepare dinner.','timeline'=>$timeline,'context_updates'=>$updates,
+        ])]]]]])];
+    }
     if (($payload['text']['format']['name']??'')==='recipe_chat') {
         $input=json_decode($payload['input'][0]['content'],true);$context=$input['cooking_context'];
         $latest=$payload['input'][count($payload['input'])-1]['content'];

@@ -35,7 +35,7 @@ final class CookingSessions
                 }
                 unset($d);
                 foreach ($s['timers'] as $t) if (!$t['cancelled']) $latest=max($latest,$t['deadline_ms']);
-                if ($now>=max($last+$s['idle_ms'],$latest)) { $this->end($s,$now); $expired[]=$id; }
+                if ($now>=((($s['combined']??false) && $s['started_at']===null) ? $s['dinner_at']+3600000 : max($last+$s['idle_ms'],$latest))) { $this->end($s,$now); $expired[]=$id; }
             }
             unset($s);
             $result=$action($state);
@@ -106,7 +106,7 @@ final class CookingSessions
                 $q->execute([$s['household_id'],$user]); return ['people'=>$q->fetchAll(PDO::FETCH_ASSOC)];
             });
         }
-        if ($body===null || !preg_match('#^/me/cooking-sessions(?:/([a-f0-9]{32})/(join|step|timer|presence|end|share))?$#D',$path,$m)) throw new HttpError(404,'not_found','Cooking session not found.');
+        if ($body===null || !preg_match('#^/me/cooking-sessions(?:/([a-f0-9]{32})/(join|step|timer|presence|end|share|start|dinner))?$#D',$path,$m)) throw new HttpError(404,'not_found','Cooking session not found.');
         $device=$this->id($body['installation_id']??null); $op=$this->id($body['operation_id']??null);
         $result=$this->store(function(&$state) use($user,$body,$m,$device,$op) {
             $now=$this->now(); $action=$m[2]??'create';
@@ -137,11 +137,16 @@ final class CookingSessions
                     if (!is_bool($body['open']??null)) throw new HttpError(422,'invalid_presence','Invalid cooking presence.');
                     $s['devices'][$device]['open_until']=$body['open'] ? $now+60000 : $now;
                     $s['last_open']=$now;
+                } elseif ($action==='start') {
+                    if ($s['combined']??false) { $s['started_at']??=$now; $s['last_open']=$now; $push=true; }
+                } elseif ($action==='dinner') {
+                    if (!($s['combined']??false)) throw new HttpError(422,'invalid_plan','Choose a combined plan.');
+                    $s['dinner_at']=self::dinner($body['dinner_at']??null); ++$s['plan_revision']; $push=true;
                 } elseif ($action==='step') {
                     $step=(string)($body['step_id']??'');
                     if (!in_array($step,array_map(fn($r)=>(string)$r['id'],$s['recipe']['steps']),true) || !is_bool($body['checked']??null)) throw new HttpError(422,'invalid_step','Invalid cooking step.');
                     $s['completed']=array_values(array_diff($s['completed'],[$step]));
-                    if ($body['checked']) $s['completed'][]=$step;
+                    if ($body['checked']) { $s['completed'][]=$step; if (($s['combined']??false) && $s['started_at']===null) { $s['started_at']=$now; $s['last_open']=$now; $push=true; } }
                     $s['step_revisions'][$step]=($s['step_revisions'][$step]??0)+1;
                 } elseif ($action==='timer') {
                     $key=(string)($body['action_id']??'');
@@ -179,6 +184,55 @@ final class CookingSessions
         }
         return ['session'=>$s];
     }
+    public static function dinner(mixed $value): int {
+        if (!is_int($value) || $value<0 || $value>7258118400000) throw new HttpError(422,'invalid_dinner','Choose a dinner time.');
+        return $value;
+    }
+    public function planSession(string $user,string $id): array {
+        return $this->store(function(&$state)use($user,$id) {
+            $s=$state[$id]??null;
+            if (!$s || !$this->accessible($s,$user) || $s['ended_at']!==null || !($s['combined']??false)) throw new HttpError(404,'session_missing','Cooking plan unavailable.');
+            return $s;
+        });
+    }
+    public function publicPlan(string $user,string $id): array { return $this->view($this->planSession($user,$id),$user); }
+    public function createPlan(string $user,string $household,string $id,string $device,array $recipe,mixed $dinner,string $message): array {
+        $dinner=self::dinner($dinner);
+        if ($dinner+3600000<=$this->now()) throw new HttpError(422,'invalid_dinner','Choose a dinner time that has not expired.');
+        return $this->store(function(&$state)use($user,$household,$id,$device,$recipe,$dinner,$message) {
+            if (!$this->member($user,$household)) throw new HttpError(403,'permission_denied','Household access removed.');
+            if (isset($state[$id])) {
+                if (!$this->accessible($state[$id],$user)) throw new HttpError(409,'operation_conflict','Plan already exists.');
+                return $this->view($state[$id],$user);
+            }
+            $now=$this->now();
+            $start=min(array_column($recipe['steps'],'offset_seconds'));
+            $s=['id'=>$id,'owner'=>$user,'household_id'=>$household,'recipe'=>$recipe,'completed'=>[],'step_revisions'=>[],
+                'timers'=>[],'devices'=>[$device=>['user'=>$user,'open_until'=>$now+60000]],'users'=>[$user=>['invited'=>false]],
+                'revision'=>1,'created_at'=>$now,'last_open'=>$now,'idle_ms'=>3600000+max(0,-$start*1000),'ended_at'=>null,'operations'=>[],
+                'combined'=>true,'started_at'=>null,'dinner_at'=>$dinner,'plan_revision'=>1,'plan_message'=>$message];
+            $state[$id]=$s;
+            return $this->view($s,$user);
+        });
+    }
+    public function updatePlan(string $user,string $id,string $device,string $turn,string $expected,array $reply): array {
+        $result=$this->store(function(&$state)use($user,$id,$device,$turn,$expected,$reply) {
+            $s=&$state[$id];
+            if (!$s || !$this->accessible($s,$user) || $s['ended_at']!==null) throw new HttpError(404,'session_missing','Cooking session ended.');
+            if (isset($s['operations'][$turn])) return ['session'=>$this->view($s,$user),'plan_changed'=>false,'progress_changed'=>false];
+            $stale=CookingPlans::progressKey($s)!==$expected;
+            $changed=$reply['timeline']!==null && !$stale;
+            if ($changed) {
+                $s['recipe']=CookingPlans::apply($s['recipe'],$reply['timeline'],$s['completed']);
+                $s['plan_message']=$reply['message']; ++$s['plan_revision'];
+                $s['idle_ms']=3600000+max(0,-min(array_column($s['recipe']['steps'],'offset_seconds'))*1000);
+            }
+            $s['operations'][$turn]=$user.':'.$device.':feedback'; ++$s['revision'];
+            return ['session'=>$this->view($s,$user),'plan_changed'=>$changed,'progress_changed'=>$stale && $reply['timeline']!==null];
+        });
+        if ($result['plan_changed']) $this->deliver($result['session'],null,$device,null);
+        return $result;
+    }
     private function deliver(array $view,?string $invite,string $source,?string $timerKey): void {
         $s=$this->store(fn(&$state)=>$state[$view['id']]);
             $q=$this->pdo->prepare('SELECT d.installation_id,d.push_token,d.platform,d.user_id,d.receive_cooking_invitations,u.firebase_uid FROM timer_devices d JOIN users u ON u.id=d.user_id WHERE d.push_token IS NOT NULL AND u.disabled=0');
@@ -190,6 +244,11 @@ final class CookingSessions
                 if ($invite===$user && !$d['receive_cooking_invitations']) continue;
                 if ($invite===$user) $payloads[]=['kind'=>'cooking_invitation','session_id'=>$s['id'],'title'=>$s['recipe']['title']];
                 elseif (($s['devices'][$d['installation_id']]['user']??null)===$user && $d['installation_id']!==$source) $payloads=$timerKey===null?array_values($s['timers']):[$s['timers'][$timerKey]];
+                if ($invite===null && ($s['combined']??false) && ($s['devices'][$d['installation_id']]['user']??null)===$user && $d['installation_id']!==$source) {
+                    $payloads[]=['timer_id'=>'session:'.$s['id'].':__plan_start','session_id'=>$s['id'],'revision'=>$s['revision'],
+                        'deadline_ms'=>$s['dinner_at']+min(array_column($s['recipe']['steps'],'offset_seconds'))*1000,
+                        'cancelled'=>$s['started_at']!==null || $s['ended_at']!==null,'title'=>$s['recipe']['title'].' · Start cooking'];
+                }
                 foreach ($payloads as $payload) {
                     try {
                         if ($this->push && ($this->push)($d,$payload+['account_uid'=>$d['firebase_uid'],'target_device'=>$d['installation_id']])===false) {
