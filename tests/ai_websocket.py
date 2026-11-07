@@ -59,6 +59,7 @@ class AiWireTests(unittest.IsolatedAsyncioTestCase):
         reply, _ = await self.result()
         self.assertEqual(reply['type'], 'response', reply)
         self.assertIsNone(reply['data']['session']['started_at'])
+        self.assertTrue(reply['data']['session']['recipe']['steps'][0]['is_preparation'])
         snapshot = await self.message(cooking)
         self.assertEqual(snapshot['data']['sessions'][0]['id'], session)
         shifted = await data.DataWireTests.request(self, cooking, f'/me/cooking-sessions/{session}/dinner',

@@ -119,3 +119,36 @@ path and its single matching saved AI result removed. The normal ended-session
 tombstone remains for device reconciliation; it is absent from active plans.
 Cancellation delivery was requested for every joined device, including the
 original device. Recipes, private cooking context and unrelated plans were retained.
+
+## Full preparation and reasoning comparison — 2026-11-07
+
+The response format now permits additional session-only preparation rows using
+`prep:` identities, an instruction and selected source-recipe references. Existing
+rows retain their IDs/instructions and use null preparation metadata. All original
+steps must remain. Added prep is merged into the session snapshot and ordered by
+its AI-assigned time; no recipe records or timers are rewritten. Completed prep
+retains its schedule during feedback. Shared snapshots include the new rows.
+Initial generation must include gathering, ingredient preparation and finishing
+in the checklist, with no extra work before it described only in notes. The first
+entry therefore covers the entire job and drives the existing start-alarm logic.
+
+Selected effort is **medium** for both generation and feedback, with Luna and the
+25,000-token allowance retained. A paired three-fixture comparison had medians
+36.02 seconds (medium) and 173.91 seconds (high). Review found an active-preparation
+overlap in one medium result; the prompt was clarified to reserve full hands-on
+intervals. A subsequent medium recheck passed all three fixtures, including added
+hands-on-event checks, at 81.93/62.03/30.63 seconds (median 62.03). The high baseline
+predates that last clarification. This is bounded evaluation, not a general speed
+or planning guarantee. No production data was used as a development fixture.
+
+Cache identity includes the actual response format as well as model, effort,
+output allowance and instructions. Private successful-result metadata includes
+elapsed request milliseconds and tokens; routine success is not logged. Existing
+incomplete-response handling preserves the current session.
+
+Focused validation: 37 PHP plan checks passed, including preparation first-step
+insertion, preserved source steps/timers, completing prep, completed-prep feedback,
+rejected unknown recipe references, and shared prep snapshots. The real local
+WebSocket generation/shift/feedback case passed with added prep in its fake
+provider. PHP syntax and changed-file diff review passed. Flutter's focused UI
+checks and their limits are recorded in the companion document.

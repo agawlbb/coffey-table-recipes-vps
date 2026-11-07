@@ -24,6 +24,7 @@ $transport=static function(array $payload): array {
         $input=json_decode($payload['input'][0]['content'],true);
         $timeline=[];
         foreach ($input['recipe']['steps'] as $step) $timeline[]=['step_id'=>(string)$step['id'],'offset_seconds'=>($input['mode']==='feedback'?-7200:-3600)];
+        if ($input['mode']==='generate') $timeline[]=['step_id'=>'prep:ingredients','offset_seconds'=>-7200,'preparation'=>['instruction'=>'Gather and prepare ingredients.','source_recipe_ids'=>[(string)$input['recipe']['steps'][0]['source_recipe_id']]]];
         $updates=($input['message']??'')==='I chop slowly.' ? [['action'=>'add','id'=>null,'person'=>'self','preference'=>'Chops slowly.','evidence'=>'I chop slowly.']] : [];
         return ['status'=>200,'body'=>json_encode(['status'=>'completed','output'=>[['content'=>[['type'=>'output_text','text'=>json_encode([
             'message'=>'Allow time to prepare dinner.','timeline'=>$timeline,'context_updates'=>$updates,
