@@ -210,7 +210,7 @@ final class CookingSessions
             $s=['id'=>$id,'owner'=>$user,'household_id'=>$household,'recipe'=>$recipe,'completed'=>[],'step_revisions'=>[],
                 'timers'=>[],'devices'=>[$device=>['user'=>$user,'open_until'=>$now+60000]],'users'=>[$user=>['invited'=>false]],
                 'revision'=>1,'created_at'=>$now,'last_open'=>$now,'idle_ms'=>3600000+max(0,-$start*1000),'ended_at'=>null,'operations'=>[],
-                'combined'=>true,'started_at'=>null,'dinner_at'=>$dinner,'plan_revision'=>1,'plan_message'=>$message];
+                'combined'=>true,'reasoning_effort'=>'low','started_at'=>null,'dinner_at'=>$dinner,'plan_revision'=>1,'plan_message'=>$message];
             $state[$id]=$s;
             return $this->view($s,$user);
         });
@@ -225,6 +225,7 @@ final class CookingSessions
             if ($changed) {
                 $s['recipe']=CookingPlans::apply($s['recipe'],$reply['timeline'],$s['completed']);
                 $s['plan_message']=$reply['message']; ++$s['plan_revision'];
+                if (isset($reply['reasoning_effort'])) $s['reasoning_effort']=$reply['reasoning_effort'];
                 $s['idle_ms']=3600000+max(0,-min(array_column($s['recipe']['steps'],'offset_seconds'))*1000);
             }
             $s['operations'][$turn]=$user.':'.$device.':feedback'; ++$s['revision'];

@@ -59,6 +59,7 @@ class AiWireTests(unittest.IsolatedAsyncioTestCase):
         reply, _ = await self.result()
         self.assertEqual(reply['type'], 'response', reply)
         self.assertIsNone(reply['data']['session']['started_at'])
+        self.assertEqual(reply['data']['session']['reasoning_effort'],'low')
         self.assertTrue(reply['data']['session']['recipe']['steps'][0]['is_preparation'])
         snapshot = await self.message(cooking)
         self.assertEqual(snapshot['data']['sessions'][0]['id'], session)
@@ -78,6 +79,13 @@ class AiWireTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn('context_updates', updated)
         with closing(sqlite3.connect(self.database)) as db:
             self.assertIn('Chops slowly.', db.execute('SELECT state_json FROM user_recipe_context WHERE user_id=1').fetchone()[0])
+
+        await self.send_ai('/households/1/cooking-plan', dict(action='more_reasoning',session_id=session,
+            installation_id=device,operation_id=uuid.uuid4().hex))
+        upgraded,_=await self.result()
+        self.assertEqual(upgraded['type'],'response',upgraded)
+        self.assertEqual(upgraded['data']['session']['reasoning_effort'],'medium')
+        self.assertEqual((await self.message(cooking))['data']['sessions'][0]['reasoning_effort'],'medium')
 
     async def test_progress_heartbeats_and_clarification_on_same_connection(self):
         with closing(sqlite3.connect(self.database)) as db:

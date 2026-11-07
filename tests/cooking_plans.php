@@ -33,7 +33,7 @@ mkdir($directory.'/cooking-plans',0700,true);
 file_put_contents($directory.'/cooking-plans/'.$oldKey.'.json',json_encode(['message'=>'Old unusable plan','timeline'=>[]]));
 try {
     $generated=$service->handle('1','1',$body);$s=$generated['session'];$id=$s['id'];
-    planCheck($payloads[0]['model']==='gpt-6-luna' && $payloads[0]['reasoning']['effort']==='medium' && $payloads[0]['max_output_tokens']===25000,'Cooking uses the selected reasoning model and sufficient output allowance');
+    planCheck($payloads[0]['model']==='gpt-6-luna' && $payloads[0]['reasoning']['effort']==='low' && $payloads[0]['max_output_tokens']===25000,'Cooking uses the selected reasoning model and sufficient output allowance');
     planCheck(!$generated['reused'] && $calls===1,'Initial plan calls AI');
     planCheck(count($s['recipe']['steps'])===4 && count(array_unique(array_column($s['recipe']['steps'],'id')))===4,'Duplicate dishes keep distinct step identities');
     planCheck($s['recipe']['steps'][0]['instruction']==='Simmer' && !isset($s['recipe']['source_text']),'Instructions preserved; private sources excluded');
@@ -73,6 +73,7 @@ try {
     $fb=['action'=>'feedback','session_id'=>$id,'installation_id'=>$device,'turn_id'=>str_repeat('3',32),'message'=>'I chop slowly','current_progress'=>['completed'=>['local-step']],'viewed_step'=>$s['recipe']['steps'][1]['id']];
     $result=$service->handle('1','1',$fb);
     planCheck(!$result['plan_changed'] && count($result['messages'])===2,'Feedback can learn without changing current plan');
+    planCheck(end($payloads)['reasoning']['effort']==='low','Feedback stays on low until the user requests more reasoning');
     planCheck(end($inputs)['current_progress']===['completed'=>['local-step']],'Feedback also includes progress currently displayed by the device');
     planCheck(end($inputs)['completed']===[$s['recipe']['steps'][0]['id']] && isset(end($inputs)['timers'],end($inputs)['now_ms']),'Feedback includes fresh server progress and time');
     $service->handle('1','1',$fb);planCheck($calls===2,'Feedback retry reuses saved response');
@@ -92,6 +93,19 @@ try {
     planCheck($changed['plan_changed'] && count($changed['session']['completed'])===2,'Valid feedback adjusts remaining work and preserves completion');
     foreach($changed['session']['recipe']['steps'] as $step) if(in_array($step['id'],$latest['completed'],true)) planCheck($step['offset_seconds']===array_column($latest['recipe']['steps'],'offset_seconds','id')[$step['id']],'Completed schedule preserved');
     $feedback=false;$updates=[];
+    $prior=$sessions->publicPlan('1',$id);$beforeUpgradeCalls=$calls;
+    $more=['action'=>'more_reasoning','session_id'=>$id,'installation_id'=>$device,'operation_id'=>str_repeat('b',32),'current_progress'=>['completed'=>$prior['completed']]];
+    $upgraded=$service->handle('1','1',$more);
+    planCheck($s['reasoning_effort']==='low' && end($payloads)['reasoning']['effort']==='medium','Initial plan uses low and explicit More reasoning uses medium');
+    planCheck($upgraded['plan_changed'] && $upgraded['session']['reasoning_effort']==='medium','Medium choice persists with the session');
+    planCheck($upgraded['session']['completed']===$prior['completed'] && $upgraded['session']['timers']===$prior['timers'],'More reasoning preserves progress and running timers');
+    planCheck(end($inputs)['mode']==='replan' && end($inputs)['current_progress']===$more['current_progress'],'More reasoning receives current progress and personal context');
+    $service->handle('1','1',$more);planCheck($calls===$beforeUpgradeCalls+1,'Retrying an already upgraded session does not spend more tokens');
+    $feedback=true;$service->handle('1','1',array_replace($fb,['turn_id'=>str_repeat('c',32)]));
+    planCheck(end($payloads)['reasoning']['effort']==='medium','Feedback follows the explicit medium choice');$feedback=false;
+    $afterContext=new RecipeUserContext($pdo,$directory,'1');planCheck(count($afterContext->forHousehold('1'))===1,'Replanning does not invent personal feedback');$afterContext->close();
+    planReject(fn()=>(new CookingPlans($pdo,['api_key'=>'fixture-only'],$directory,fn($payload)=>['status'=>503,'body'=>'{}']))->handle('1','1',array_replace($more,['session_id'=>str_repeat('2',32)])),502);
+    planCheck($sessions->publicPlan('1',str_repeat('2',32))['reasoning_effort']==='low','Failed medium attempt preserves the low plan');
     $fresh=$service->handle('1','1',array_replace($body,['session_id'=>str_repeat('6',32)]));
     planCheck(!$fresh['reused'] && count(end($inputs)['cooking_context'])===1,'Changed personal context invalidates cached plan');
     $pdo->exec("UPDATE recipe_steps SET instruction='Simmer gently' WHERE id=1");

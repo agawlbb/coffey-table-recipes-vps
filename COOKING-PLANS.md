@@ -192,3 +192,29 @@ HTTP 200 with status ok. Deployment retained CpuShares=1024 and unlimited cpu.ma
 Private configuration and persistent state were preserved; no setup migration or
 plan deletion ran. App source is committed as `9c100e6`; a new native package has
 not been built. Both changes remain on their task branches pending acceptance.
+
+
+## Explicit More reasoning upgrade — 2026-11-07
+
+Continued backend `6369764` with app `5243666`. New combined plans use Luna low
+and expose reasoning_effort=low in existing session snapshots. The existing
+cooking-plan endpoint accepts action=more_reasoning, session_id, installation_id,
+operation_id and optional displayed current_progress. It replans with medium,
+the requesting author's context and current server progress. A successful plan
+update persists reasoning_effort=medium; later feedback uses that effort.
+Previously created sessions retain their medium behavior when the field is absent.
+No automatic escalation or UI setting was added. Normal recipe data is unchanged.
+
+Completed offsets and timer deadlines are preserved using existing plan-update
+behavior. Existing progress-change handling leaves obsolete results unapplied;
+AI failures leave the current plan intact. Once medium is saved, retrying the
+upgrade returns the current session without spending more provider tokens.
+Replanning does not create synthetic feedback messages or personal context facts.
+Low generation remains cached separately by the existing planner/context key.
+
+48 PHP fixture checks passed, including low/default feedback, explicit medium,
+continued medium feedback, saved upgrade reuse, failure preservation, progress,
+timers and personal context. The real combined-plan wire scenario passes low
+creation, dinner shifts, feedback, explicit medium upgrade and cooking-subscriber
+broadcasts. PHP syntax and diff checks passed. Fixtures use disposable SQL and a
+fake provider; no full suite or live provider evaluation was run for this change.
