@@ -163,3 +163,25 @@ covers all joined devices. Its single matching cached result was removed. The
 normal ended-session tombstone is retained for reconciliation; the plan is absent
 from active sessions. Recipes, personal context and unrelated sessions were not
 changed. No schema migration, app build, release or main integration ran.
+
+
+## Shared connection follow-up — 2026-11-07
+
+Continued task from backend `c4bf94b` and app `1166583`. Authentication renewal
+for the same user/scope preserves active workers; changing identity/scope still
+separates their work. The existing 120-request/minute protection applies to
+identified data requests, leaving authentication and keepalives available.
+A rate error therefore fails its request rather than disconnecting the client.
+AI worker capacity limits remain request-local.
+
+Feedback accepts `current_progress` containing the device's displayed completed
+steps, timers, start and dinner time. It is supplied to AI alongside fresh server
+state, without requiring the client to wait for other saves. It does not write
+client-reported progress over canonical server progress. Planner settings and
+generation prompts/cache identities are unchanged.
+
+Validation: 38 cooking-plan PHP checks; PHP syntax checks; seven real app-socket
+scenarios including rate errors followed by keepalive/authentication; the existing
+combined-plan wire scenario; and same-connection authentication renewal during a
+running AI request (two selected AI socket scenarios). These use disposable SQL
+and a fake provider. No full suite, live AI request, database reset or app build.

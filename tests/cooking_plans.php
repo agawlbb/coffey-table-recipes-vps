@@ -70,9 +70,10 @@ try {
     planCheck($checked['started_at']===$now,'Completing any step starts cooking');
     $change($id,'share',['person_id'=>'20']);
     $feedback=true;$updates=[['action'=>'add','id'=>null,'person'=>'self','preference'=>'Chops slowly.','evidence'=>'I chop slowly']];
-    $fb=['action'=>'feedback','session_id'=>$id,'installation_id'=>$device,'turn_id'=>str_repeat('3',32),'message'=>'I chop slowly','viewed_step'=>$s['recipe']['steps'][1]['id']];
+    $fb=['action'=>'feedback','session_id'=>$id,'installation_id'=>$device,'turn_id'=>str_repeat('3',32),'message'=>'I chop slowly','current_progress'=>['completed'=>['local-step']],'viewed_step'=>$s['recipe']['steps'][1]['id']];
     $result=$service->handle('1','1',$fb);
     planCheck(!$result['plan_changed'] && count($result['messages'])===2,'Feedback can learn without changing current plan');
+    planCheck(end($inputs)['current_progress']===['completed'=>['local-step']],'Feedback also includes progress currently displayed by the device');
     planCheck(end($inputs)['completed']===[$s['recipe']['steps'][0]['id']] && isset(end($inputs)['timers'],end($inputs)['now_ms']),'Feedback includes fresh server progress and time');
     $service->handle('1','1',$fb);planCheck($calls===2,'Feedback retry reuses saved response');
     $ownerContext=new RecipeUserContext($pdo,$directory,'1');planCheck(count($ownerContext->forHousehold('1'))===1,'Feedback saved for author');$ownerContext->close();

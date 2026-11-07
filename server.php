@@ -98,8 +98,6 @@ $worker->onMessage = static function (TcpConnection $c, string $text) use (&$cli
         $m = json_decode($text, true, 32, JSON_THROW_ON_ERROR);
         if (!is_array($m) || ($m['v'] ?? null) !== 1) throw new HttpError(422, 'invalid_message', 'Unsupported protocol.');
         $entry = &$clients[$c->id];
-        if (time() - $entry['window'] >= 60) { $entry['window']=time(); $entry['rate']=0; }
-        if (++$entry['rate'] > 120) throw new HttpError(429, 'rate_limited', 'Data synchronization is busy.');
         $entry['last'] = time();
         if (($m['type'] ?? '') === 'auth') {
             if (!is_string($m['token'] ?? null) || strlen($m['token']) > 16384) throw new HttpError(401, 'invalid_token', 'Sign in again.');
@@ -108,7 +106,11 @@ $worker->onMessage = static function (TcpConnection $c, string $text) use (&$cli
             $scope=$m['scope']??'shopping';
             if (!is_string($scope)) throw new HttpError(422,'invalid_scope','Invalid scope.');
             $service = $factory(); $actor = $service->authenticate($m['token'], $household, $scope);
-            $accountJobs->disconnect((string)$c->id);
+            if (isset($entry['actor']) && (($entry['actor']['uid']??null)!==($actor['uid']??null)
+                || $entry['scope']!==$scope || $entry['household']!==$actor['household'])) {
+                $accountJobs->disconnect((string)$c->id);
+                $aiJobs->stop((string)$c->id);
+            }
             $entry['scope']=$scope; $entry['actor']=$actor;
             $entry['token']=$m['token']; $entry['household']=$actor['household'];
             $data=(object)(in_array($scope,['ai','account'],true) ? [] : $service->snapshot($actor));
@@ -123,6 +125,8 @@ $worker->onMessage = static function (TcpConnection $c, string $text) use (&$cli
             $id=$m['id'] ?? null;
             if (($m['type'] ?? '') !== 'request' || !is_string($id) || strlen($id)>80 || !is_string($m['path'] ?? null)
                 || (isset($m['body']) && !is_array($m['body']))) throw new HttpError(422, 'invalid_message', 'Invalid data request.');
+            if (time() - $entry['window'] >= 60) { $entry['window']=time(); $entry['rate']=0; }
+            if (++$entry['rate'] > 120) throw new HttpError(429, 'rate_limited', 'Data synchronization is busy.');
             $body=$m['body'] ?? null;
             if (AccountService::matches($m['path'])) {
                 if (!in_array($entry['scope'],['account','app'],true)) throw new HttpError(403,'permission_denied','Use an account connection.');

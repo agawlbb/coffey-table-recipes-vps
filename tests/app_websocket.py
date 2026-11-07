@@ -29,6 +29,16 @@ class AppWireTests(unittest.IsolatedAsyncioTestCase):
             if frame['type']=='snapshot': snapshots.append(frame['data'])
             elif frame['type']!='progress': return frame,snapshots
 
+    async def test_request_limit_does_not_disconnect_heartbeats_or_reauthentication(self):
+        await self.auth(self.app)
+        for i in range(121):
+            reply,_=await self.command(self.app,'/me/timers',request_id=str(i))
+        self.assertEqual(reply['status'],429)
+        self.assertEqual(reply['id'],'120')
+        await self.app.send_json(dict(v=1,type='ping'))
+        self.assertEqual((await self.message(self.app))['type'],'pong')
+        self.assertIn('account',await self.auth(self.app))
+
     async def test_one_connection_bootstrap_and_bidirectional_changes(self):
         state=await self.auth(self.app)
         self.assertEqual(state['account']['user']['id'],'1')

@@ -108,6 +108,23 @@ class AiWireTests(unittest.IsolatedAsyncioTestCase):
         with closing(sqlite3.connect(self.database)) as db:
             self.assertEqual(db.execute('SELECT COUNT(*) FROM recipes').fetchone()[0], initial_count)
 
+    async def test_token_renewal_preserves_running_ai_and_heartbeats(self):
+        await self.auth(self.app, scope='ai')
+        await self.send_ai()
+        self.assertEqual((await self.message(self.app))['type'],'progress')
+        await self.app.send_json(dict(v=1,type='auth',scope='ai',token='alice',household_id='1'))
+        while True:
+            event=await self.message(self.app)
+            if event['type']=='ready': break
+            self.assertEqual(event['type'],'progress',event)
+        await self.app.send_json(dict(v=1,type='ping'))
+        while True:
+            event=await self.message(self.app)
+            if event['type']=='pong': break
+            self.assertEqual(event['type'],'progress',event)
+        response,_=await self.result()
+        self.assertEqual(response['type'],'response',response)
+
     async def test_separate_working_recipe_chat(self):
         await self.auth(self.app, scope='ai')
         body = dict(request_id='8' * 32, turn_id='1' * 32, revision=0,

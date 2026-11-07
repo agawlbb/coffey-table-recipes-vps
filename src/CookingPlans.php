@@ -138,7 +138,7 @@ PROMPT;
             } else {
                 $input=['mode'=>'feedback','recipe'=>$s['recipe'],'dinner_at'=>$s['dinner_at'],'now_ms'=>(int)(microtime(true)*1000),
                     'completed'=>$s['completed'],'timers'=>array_values($s['timers']),'started_at'=>$s['started_at'],
-                    'viewed_step'=>$body['viewed_step']??null,'conversation'=>$chat['messages'],'message'=>$message,'cooking_context'=>$context->forHousehold($household)];
+                    'viewed_step'=>$body['viewed_step']??null,'current_progress'=>$body['current_progress']??null,'conversation'=>$chat['messages'],'message'=>$message,'cooking_context'=>$context->forHousehold($household)];
                 $reply=$this->reply($input);
                 if ($reply['timeline']!==null) self::apply($s['recipe'],$reply['timeline'],$s['completed']);
                 $next=$context->propose($reply['context_updates']??null,$message,$household);
