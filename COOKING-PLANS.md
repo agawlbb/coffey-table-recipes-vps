@@ -218,3 +218,9 @@ timers and personal context. The real combined-plan wire scenario passes low
 creation, dinner shifts, feedback, explicit medium upgrade and cooking-subscriber
 broadcasts. PHP syntax and diff checks passed. Fixtures use disposable SQL and a
 fake provider; no full suite or live provider evaluation was run for this change.
+
+Backend source `6576e1f` was deployed by copying source and restarting the
+existing service. All 62 checked PHP/entry/lock files match that commit;
+public health returned HTTP 200/status ok. CPU policy remains CpuShares=1024
+with unlimited cpu.max. Private configuration and persistent state were preserved.
+Companion app source `f880128` is ready on its task branch; no APK was built.
