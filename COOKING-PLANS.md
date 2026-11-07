@@ -224,3 +224,23 @@ existing service. All 62 checked PHP/entry/lock files match that commit;
 public health returned HTTP 200/status ok. CPU policy remains CpuShares=1024
 with unlimited cpu.max. Private configuration and persistent state were preserved.
 Companion app source `f880128` is ready on its task branch; no APK was built.
+
+
+## Accepted main integration and 2.9.0 release — 2026-11-07
+
+The owner requested main integration, working-branch cleanup and release of both
+native platforms. The task was fast-forwarded into backend main at e42f47e and
+pushed. Local/remote feature/combined-cooking and its worktree were removed after
+verifying the merge. All 64 checked source/lock/association files deployed on the
+VPS match merged main; no final backend redeployment or schema change was needed.
+
+The latest requested soup/bread session was already ended; its unique matching
+reusable plan cache was removed. Its normal ended tombstone, recipes, private
+cooking context and unrelated plans were preserved.
+
+App tag v2.9.0/source 05fa06e, build69 was delivered on Android and signed iOS.
+Android signature/checksum/native-link verification and Drive upload passed.
+Apple confirms build 28ab6448-47b7-4474-93ec-841c56dfd852 is VALID and
+IN_BETA_TESTING for the existing Family testers group. Detailed release receipts
+and focused client validation are recorded in the app repository docs/releases.md.
+No additional PHP/tooling suites were run for the final client-only UI repair.
