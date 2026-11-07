@@ -13,9 +13,9 @@ $pdo->exec("INSERT INTO household_memberships VALUES(1,2,'member'); INSERT INTO 
 INSERT INTO recipe_step_actions(id,household_id,recipe_id,step_id,position,label,duration_seconds) VALUES(10,1,1,1,1,'Simmer',60);
 INSERT INTO recipe_steps(id,household_id,recipe_id,position,instruction) VALUES(3,1,1,2,'Rest before serving');
 INSERT INTO meal_plan_entries(id,household_id,kind,recipe_id,recipe_identity,title,plan_date,created_at) VALUES('soup',1,'recipe',1,1,'Soup','2026-11-07','2026-11-07'),('second',1,'recipe',1,1,'Soup again','2026-11-07','2026-11-07');");
-$calls=0;$inputs=[];$feedback=false;$malformed=false;$updates=[];
-$transport=function($payload)use(&$calls,&$inputs,&$feedback,&$malformed,&$updates) {
-    $calls++;$input=json_decode($payload['input'][0]['content'],true);$inputs[]=$input;
+$calls=0;$inputs=[];$payloads=[];$feedback=false;$malformed=false;$updates=[];
+$transport=function($payload)use(&$calls,&$inputs,&$payloads,&$feedback,&$malformed,&$updates) {
+    $calls++;$payloads[]=$payload;$input=json_decode($payload['input'][0]['content'],true);$inputs[]=$input;
     $timeline=[];
     foreach ($input['recipe']['steps'] as $i=>$step) $timeline[]=['step_id'=>(string)$step['id'],'offset_seconds'=>[-3600,-600,-3300,-300][$i]];
     if ($malformed) array_pop($timeline);
@@ -26,8 +26,14 @@ $service=new CookingPlans($pdo,['api_key'=>'fixture-only','model'=>'fixture'],$d
 $body=['date'=>'2026-11-07','entry_ids'=>['soup','second'],'session_id'=>str_repeat('1',32),'installation_id'=>$device,'dinner_at'=>$now+8*3600000];
 $sessions=new CookingSessions($pdo,null,null,function()use(&$now){return $now;});
 $change=function($id,$action,$body=[])use($sessions,$device) {return $sessions->request('1','alice','/me/cooking-sessions/'.$id.'/'.$action,$body+['installation_id'=>$device,'operation_id'=>bin2hex(random_bytes(16))])['session'];};
+$oldSource=(new RecipeService($pdo,new HouseholdService($pdo)))->detail('1','1','1');
+$oldSource=array_intersect_key($oldSource,array_flip(['id','title','steps','actions','ingredients','groups','prep_minutes','cook_minutes','total_minutes','servings','yield_text','notes']));
+$oldKey=hash('sha256',json_encode(['version'=>1,'user'=>'1','household'=>'1','recipes'=>[$oldSource,$oldSource],'context'=>[]],JSON_THROW_ON_ERROR));
+mkdir($directory.'/cooking-plans',0700,true);
+file_put_contents($directory.'/cooking-plans/'.$oldKey.'.json',json_encode(['message'=>'Old unusable plan','timeline'=>[]]));
 try {
     $generated=$service->handle('1','1',$body);$s=$generated['session'];$id=$s['id'];
+    planCheck($payloads[0]['model']==='gpt-6-luna' && $payloads[0]['reasoning']['effort']==='high' && $payloads[0]['max_output_tokens']===25000,'Cooking uses the selected reasoning model and sufficient output allowance');
     planCheck(!$generated['reused'] && $calls===1,'Initial plan calls AI');
     planCheck(count($s['recipe']['steps'])===4 && count(array_unique(array_column($s['recipe']['steps'],'id')))===4,'Duplicate dishes keep distinct step identities');
     planCheck($s['recipe']['steps'][0]['instruction']==='Simmer' && !isset($s['recipe']['source_text']),'Instructions preserved; private sources excluded');
@@ -71,6 +77,12 @@ try {
     $pdo->exec("UPDATE recipe_steps SET instruction='Simmer gently' WHERE id=1");
     $malformed=true;planReject(fn()=>$service->handle('1','1',array_replace($body,['session_id'=>str_repeat('7',32)])),502);
     planCheck(!in_array(str_repeat('7',32),array_column($sessions->snapshot('1')['sessions'],'id'),true),'Malformed AI cannot create partial session');
+    $limited=new CookingPlans($pdo,['api_key'=>'fixture-only','model'=>'wrong-global-model'],$directory,
+        fn($payload)=>['status'=>200,'body'=>json_encode(['status'=>'incomplete','incomplete_details'=>['reason'=>'max_output_tokens'],'usage'=>['output_tokens'=>25000]])]);
+    $before=$sessions->snapshot('1')['sessions'];
+    try { $limited->handle('1','1',array_replace($body,['session_id'=>str_repeat('9',32)])); throw new RuntimeException('Expected token limit'); }
+    catch(HttpError $e) { planCheck($e->errorCode==='ai_output_limit','Token exhaustion has an actionable error'); }
+    planCheck($sessions->snapshot('1')['sessions']==$before,'Token exhaustion preserves existing sessions');
     planReject(fn()=>$service->handle('2','2',array_replace($body,['session_id'=>str_repeat('8',32)])),422);
     $now=$body['dinner_at']+3600001;
     $remaining=array_column($sessions->snapshot('1')['sessions'],'id');

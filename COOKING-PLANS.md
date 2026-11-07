@@ -83,3 +83,29 @@ backup-path record was unreadable; no pre/post private-hash claim is made.
 
 The task remains separate from main. Native delivery and real cooking quality
 still require device/user acceptance after an explicitly requested app build.
+
+## Reasoning correction — 2026-11-07
+
+CookingPlans now selects `gpt-6-luna` with explicit high reasoning and a 25,000
+output-token allowance, independently of the global recipe-AI Mini override.
+Generation and feedback use the same settings. The prompt requires backwards
+planning from ready-to-serve dishes, upper timer ranges, realistic heating and
+handling, and one cook's attention. AI continues to choose every schedule offset.
+No recipe schema or server scheduling algorithm is introduced.
+
+Cache matching includes effective model, reasoning, output allowance and prompt.
+Existing sessions are preserved; old planner results cannot satisfy new corrected
+requests. Token-limit exhaustion has a specific actionable error and leaves
+sessions intact. Failure logs contain only model/effort/usage metadata, while
+successful usage stays with the private saved AI result.
+
+`php tests/cooking_plans.php`: 30 checks passed, including outgoing settings,
+previous-cache exclusion and unchanged session content after token exhaustion.
+The initial preservation assertion compared PHP object identity rather than data;
+that fixture assertion was corrected. The targeted real WebSocket scenario passed.
+Live isolated fixture evaluations with the selected model passed soup/bread,
+four dishes, and feedback with completed steps/a running potato timer. All explicit
+range/dependency checks passed; broiler watching did not overlap soup finishing.
+Total tokens were respectively 6,222, 11,702 and 5,904. These bounded examples do
+not establish reliability for every meal. No production recipes/data were used
+as development fixtures and no full test suite was run.
