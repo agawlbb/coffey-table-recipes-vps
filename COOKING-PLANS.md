@@ -185,3 +185,10 @@ scenarios including rate errors followed by keepalive/authentication; the existi
 combined-plan wire scenario; and same-connection authentication renewal during a
 running AI request (two selected AI socket scenarios). These use disposable SQL
 and a fake provider. No full suite, live AI request, database reset or app build.
+
+Hosted source `bd11647` was copied and the existing backend restarted. All 62
+tracked PHP/entry/lock files checked match that commit; public `/health` returned
+HTTP 200 with status ok. Deployment retained CpuShares=1024 and unlimited cpu.max.
+Private configuration and persistent state were preserved; no setup migration or
+plan deletion ran. App source is committed as `9c100e6`; a new native package has
+not been built. Both changes remain on their task branches pending acceptance.
