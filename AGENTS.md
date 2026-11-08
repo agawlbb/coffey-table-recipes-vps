@@ -73,3 +73,9 @@ Preserve existing memory, swap, process, security and restart settings. Deployme
 must retain the policy in its installed Compose configuration and verify
 `CpuShares=1024` and effective `/sys/fs/cgroup/cpu.max` beginning with `max`.
 The VPS reference is `agawlbb/vps_admin`, branch `work`, commit `9463376`.
+
+## Current VPS deployment
+
+Use [DEPLOYMENT.md](DEPLOYMENT.md) for standard container preparation, rsync and restricted
+SSH deployment. Older host-administrator deployment scripts are not the routine
+path. Infrastructure and migration changes require separate authorization.

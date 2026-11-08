@@ -45,41 +45,11 @@ historical file-storage descriptions below.
 
 ## Deployment
 
-On the VPS, from this checkout:
-
-```sh
-python3 deploy.py
-```
-
-This copies source and locked dependencies into `/opt/services/ctr-backend/code/`
-and restarts the one `ctr-backend` container. No cPanel credential is used.
-Before deploying this migration, install the existing VPS timer sender credential
-as `private/timer-push.json` (mode 600). AI uses the uploaded
-`private/recipe-ai.local.json` (mode 600). Account actions require the existing
-SMTP relay settings in `private/smtp.json` and account credential in
-`private/firebase-admin.json` (mode 600); see the account setup above.
-Credentials remain in `/opt/services/ctr-backend/private/`, and persistent state
-in `/opt/services/ctr-backend/state/`. Both are outside Git and are preserved.
-Routine source changes do not rebuild the runtime image or run schema/import jobs.
-Managed photos and category artwork live in `state/media/recipes/`. The one-time
-verified transfer must finish before this cutover is deployed. Deployment also copies this repository's `backend.caddy` site and
-reloads Caddy to serve the new photos through the service's restricted HTTP
-listener. No database migration, image build or app deployment is included.
-Production uses CPU shares 1024 with no hard CPU quota, allowing idle CPU use.
-Deployment verifies Docker CpuShares and effective cgroup cpu.max after restart.
-Keep memory/swap, process, security and restart settings unchanged.
-
-Docker/Compose, the existing Caddy route, running VPS MariaDB and its external
-`database-backend` network, private database/Firebase configuration
-Large photos are optimized by a separate background process after upload, with
-originals retained and existing URLs preserved. See
-[PHOTO-OPTIMIZATION.md](PHOTO-OPTIMIZATION.md) for the runtime GD/EXIF setup,
-batch command, processing limits and validation.
-
-Docker/Compose, the existing Caddy route, private database/Firebase configuration
-and locked Composer dependencies are setup prerequisites. Runtime image changes
-are explicit: `sudo docker build -t ctr-backend:latest .`. Google Firebase uses
-the existing project. No separate VPS Firebase project is needed.
+Use [DEPLOYMENT.md](DEPLOYMENT.md) for current source-copy/restart deployment from
+the shared development container through restricted SSH. It supersedes the old
+host-only deploy.py instructions. Preserve private configuration, media/state and
+database data. Runtime/Compose/Caddy changes and migrations are separate,
+explicitly authorized administration; routine deployment does not repeat them.
 
 ## Development
 
