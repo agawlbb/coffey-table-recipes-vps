@@ -71,3 +71,12 @@ during broadcast followed by recovery on the same connection. The existing
 one-connection bootstrap/bidirectional scenario and PHP work_calendar/data_socket
 fixtures passed. PHP syntax and diff checks passed. Only disposable SQLite data
 was used; no full suite or app build was run.
+
+Deployment of repair source `1439d90` was authorized by the standing owner backend
+repair/deployment instruction. Preflight found only HouseholdSnapshot.php changed
+in live source. Copied that file with mode 644 and restarted only backend; no
+schema setup, dependency/image change, private settings or data modification.
+Health returned HTTP 200/status ok, deployed source checksum comparison was empty,
+CPU shares remain 1024 and cpu.max is `max 100000`. Client foreground color retry
+still requires the corrected app build; deploying this guard does not repair the
+old client's HTTP routing. Main integration remains pending owner acceptance.
