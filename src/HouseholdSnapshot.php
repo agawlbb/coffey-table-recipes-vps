@@ -99,7 +99,13 @@ final class HouseholdSnapshot {
             } while($offset!==null);
             $responses["$rootPath/recipes/deleted"]=['recipes'=>$deleted,'next_offset'=>null];
             $responses["$rootPath/restaurants"]=(new RestaurantService($this->pdo,$this->households))->read($user,$household);
-            $responses["$rootPath/work-calendar"]=(new WorkCalendar($this->pdo))->read($household);
+            // Calendar decoration must never prevent the shared app snapshot.
+            try {
+                $responses["$rootPath/work-calendar"]=(new WorkCalendar($this->pdo))->read($household);
+            } catch (Throwable $error) {
+                error_log('CTR optional work calendar unavailable: '.get_class($error));
+                $responses["$rootPath/work-calendar"]=['dates'=>[], 'color'=>'#E09F3E'];
+            }
             $responses["$rootPath/people"]=['people'=>$people];
             if (class_exists('MealPlanService')) {
                 $plans=new MealPlanService($this->pdo,$this->households,$this->mediaUrl);

@@ -46,3 +46,28 @@ inherited mode 600; corrected the two new public source/SQL files to 644 and
 restarted successfully. The health endpoint returned HTTP 200/status ok; deployed
 src and bootstrap checksum comparisons were empty. CPU shares remain 1024 and
 cpu.max is `max 100000`. No fixtures ran against production data.
+
+## Calendar connection repair — 2026-11-10
+
+Task `fix/calendar-connection`, based on backend main `44c1261`; companion app
+fix starts at `09e5894`. The released app omitted work-calendar from its socket
+route list, so calendar color writes used HTTP and received Endpoint not found.
+The durable color write retried on foregrounding and showed the existing local
+save/send-error notice. The client fix sends that endpoint over the authenticated
+shared WebSocket and retains the pending user change.
+
+Calendar reads are optional decoration inside HouseholdSnapshot. A calendar read
+exception is logged with its exception class, without account data or SQL details;
+the snapshot supplies empty dates/default amber while the calendar is unreadable.
+Recipe/account/shopping/timer data still bootstrap and broadcast. Recovery restores
+the stored dates and color on the next snapshot. Stored calendar data is not
+changed by fallback, and authorization remains outside that optional read.
+This isolates calendar read exceptions; it is not a guarantee against unrelated
+server/network/database failures or a stalled database query.
+
+Validation: three new real-loopback WebSocket checks cover malformed calendar
+JSON at initial authentication, a missing calendar table, and calendar failure
+during broadcast followed by recovery on the same connection. The existing
+one-connection bootstrap/bidirectional scenario and PHP work_calendar/data_socket
+fixtures passed. PHP syntax and diff checks passed. Only disposable SQLite data
+was used; no full suite or app build was run.

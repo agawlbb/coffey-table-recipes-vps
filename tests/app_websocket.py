@@ -1,6 +1,8 @@
 """One real connection carries account, household, cooking and timer traffic."""
 import asyncio
 import unittest
+import sqlite3
+from contextlib import closing
 import shopping_websocket as shopping
 
 
@@ -28,6 +30,38 @@ class AppWireTests(unittest.IsolatedAsyncioTestCase):
             frame=await self.message(ws)
             if frame['type']=='snapshot': snapshots.append(frame['data'])
             elif frame['type']!='progress': return frame,snapshots
+
+    async def test_bad_calendar_data_does_not_block_app_startup(self):
+        with closing(sqlite3.connect(self.database)) as db, db:
+            db.execute("INSERT INTO household_work_calendars VALUES(1,?,?)", ('{','#1976D2'))
+        state=await self.auth(self.app)
+        self.assertEqual(state['households']['1']['library']['responses']['/households/1/work-calendar']['dates'], [])
+        response,_=await self.command(self.app,'/me/timers')
+        self.assertEqual(response['type'],'response')
+
+    async def test_missing_calendar_table_does_not_block_app_startup(self):
+        with closing(sqlite3.connect(self.database)) as db, db:
+            db.execute('DROP TABLE household_work_calendars')
+        state=await self.auth(self.app)
+        self.assertIn('account',state)
+        self.assertIn('timers',state)
+        response,_=await self.command(self.app,'/households/1/meal-plan?from=2026-11-01&to=2026-11-30')
+        self.assertEqual(response['type'],'response')
+
+    async def test_calendar_failure_during_push_keeps_connection_and_recovers(self):
+        await self.auth(self.app)
+        with closing(sqlite3.connect(self.database)) as db, db:
+            db.execute("INSERT INTO household_work_calendars VALUES(1,?,?)", ('{','#1976D2'))
+        response,pushes=await self.command(self.app,'/households/1/name',{'name':'Still connected'})
+        self.assertEqual(response['type'],'response')
+        self.assertEqual(pushes[-1]['households']['1']['library']['responses']['/households/1/work-calendar']['dates'], [])
+        response,_=await self.command(self.app,'/me/timers')
+        self.assertEqual(response['type'],'response')
+        with closing(sqlite3.connect(self.database)) as db, db:
+            db.execute("UPDATE household_work_calendars SET dates_json=? WHERE household_id=1", ('["2026-11-10"]',))
+        response,pushes=await self.command(self.app,'/households/1/name',{'name':'Calendar recovered'})
+        self.assertEqual(response['type'],'response')
+        self.assertEqual(pushes[-1]['households']['1']['library']['responses']['/households/1/work-calendar'], {'dates':['2026-11-10'],'color':'#1976D2'})
 
     async def test_request_limit_does_not_disconnect_heartbeats_or_reauthentication(self):
         await self.auth(self.app)
