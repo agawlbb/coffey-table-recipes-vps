@@ -53,7 +53,8 @@ INSERT INTO recipe_category_assignments (household_id,recipe_id,category_id) VAL
 INSERT INTO recipe_favorites (recipe_id,household_id,person_id) VALUES (1,1,10);
 INSERT INTO recipe_photos(id,household_id,recipe_id,position,source_url,storage_key,is_cover) VALUES(1,1,1,1,'https://coffeybean.com/CoffeyTableRecipes/media/recipes/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.jpg','media/recipes/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.jpg',1);
 INSERT INTO recipe_steps (id,household_id,recipe_id,position,instruction) VALUES (1,1,1,1,'Simmer');");
-if (class_exists('MealPlanService')) $pdo->exec("CREATE TABLE meal_plans(household_id INTEGER PRIMARY KEY,revision INTEGER,time_zone TEXT);
+if (class_exists('MealPlanService')) $pdo->exec("CREATE TABLE household_work_calendars(household_id INTEGER PRIMARY KEY,dates_json TEXT,color TEXT);
+CREATE TABLE meal_plans(household_id INTEGER PRIMARY KEY,revision INTEGER,time_zone TEXT);
 CREATE TABLE meal_plan_entries(household_id INTEGER,id TEXT,plan_date TEXT,kind TEXT,recipe_id INTEGER,recipe_identity INTEGER,title TEXT,recipe_revision INTEGER,created_at TEXT);
 CREATE TABLE IF NOT EXISTS cooking_events(id INTEGER,household_id INTEGER,cooked_at TEXT);
 CREATE TABLE IF NOT EXISTS cooking_event_recipes(household_id INTEGER,event_id INTEGER,recipe_id INTEGER,recipe_revision INTEGER);

@@ -41,6 +41,10 @@ final class ShoppingSocket
     private function perform(array $actor,string $path,?array $body): array
     {
         $household=$actor['household'];
+        if ($path === '/households/'.$household.'/work-calendar') {
+            if (!$actor['ha'] || $body===null) throw new HttpError(403,'permission_denied','Only Home Assistant may publish calendar dates.');
+            return (new WorkCalendar($this->pdo))->save($household,$body,true);
+        }
         $root = '/households/'.$household.'/shopping-list';
         if ($path === $root.'/photos' || preg_match('#^'.preg_quote($root, '#').'/photos/([a-f0-9]{64})$#D', $path, $photoMatch)) {
             if ($actor['ha']) throw new HttpError(403, 'permission_denied', 'Sign in to manage shopping photos.');

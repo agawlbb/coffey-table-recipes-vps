@@ -13,6 +13,7 @@ CREATE TABLE recipe_ingredients(id INTEGER,household_id INTEGER,recipe_id INTEGE
 CREATE TABLE cooking_events(id INTEGER,household_id INTEGER,cooked_at TEXT);
 CREATE TABLE cooking_event_recipes(household_id INTEGER,event_id INTEGER,recipe_id INTEGER,recipe_revision INTEGER);
 CREATE TABLE deleted_recipe_cooking_history(household_id INTEGER,event_id INTEGER,recipe_id INTEGER,recipe_title TEXT,recipe_revision INTEGER);
+CREATE TABLE household_work_calendars(household_id INTEGER PRIMARY KEY,dates_json TEXT,color TEXT);
 CREATE TABLE meal_plans(household_id INTEGER PRIMARY KEY,revision INTEGER,time_zone TEXT);
 CREATE TABLE meal_plan_entries(household_id INTEGER,id TEXT,plan_date TEXT,kind TEXT,recipe_id INTEGER REFERENCES recipes(id) ON DELETE SET NULL,recipe_identity INTEGER,title TEXT,recipe_revision INTEGER,created_at TEXT DEFAULT CURRENT_TIMESTAMP,PRIMARY KEY(household_id,id));
 INSERT INTO households VALUES(1),(2);

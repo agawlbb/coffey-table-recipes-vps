@@ -126,6 +126,11 @@ final class DataSocket
             $snapshot=$this->snapshot($actor)['library'];
             return ($query['version']??'')===$snapshot['version'] ? ['schema'=>1,'household_id'=>$household,'version'=>$snapshot['version'],'unchanged'=>true] : $snapshot;
         }
+        if ($part==='/work-calendar') {
+            $h->membership($user,$household);
+            $calendar=new WorkCalendar($this->pdo);
+            return $body===null ? $calendar->read($household) : $calendar->save($household,$body,false);
+        }
         if ($part==='/restaurants') {
             $service=new RestaurantService($this->pdo,$h);
             return $body===null ? $service->read($user,$household) : $service->save($user,$household,$body);

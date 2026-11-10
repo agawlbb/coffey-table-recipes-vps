@@ -12,6 +12,16 @@ $actor=$socket->authenticate('alice','1','household');
 $ready=$socket->snapshot($actor);
 checkData(isset($ready['shopping']['items'],$ready['library']['responses']), 'Combined durable initial snapshot');
 checkData($call('/recipes/1')['recipe']['title']==='Soup','Authenticated recipe read');
+checkData($call('/work-calendar')===['dates'=>[],'color'=>'#E09F3E'],'Default household calendar');
+$call('/work-calendar',['color'=>'#1976D2']);
+rejectData(fn()=>$socket->handle('bob','1',$root.'/work-calendar',null,'household'),404);
+rejectData(fn()=>$call('/work-calendar',['dates'=>['2026-11-10']]),422);
+$calendarToken=$connections->create('1')['token'];
+$socket->handle($calendarToken,'1',$root.'/work-calendar',['dates'=>['2026-11-10']],'shopping');
+$updated=$socket->snapshot($actor)['library'];
+checkData($updated['responses'][$root.'/work-calendar']===['dates'=>['2026-11-10'],'color'=>'#1976D2'],'Calendar and color reach household snapshots');
+checkData($updated['version']!==$ready['library']['version'],'Calendar updates change snapshot version');
+
 checkData(count($call('/recipes?q=Soup')['recipes'])===1,'Query preserved');
 rejectData(fn()=>$call('/recipes?offset[]=1'),400);
 rejectData(fn()=>$socket->handle('bob','1',$root.'/recipes',null,'household'),404);

@@ -99,6 +99,7 @@ final class HouseholdSnapshot {
             } while($offset!==null);
             $responses["$rootPath/recipes/deleted"]=['recipes'=>$deleted,'next_offset'=>null];
             $responses["$rootPath/restaurants"]=(new RestaurantService($this->pdo,$this->households))->read($user,$household);
+            $responses["$rootPath/work-calendar"]=(new WorkCalendar($this->pdo))->read($household);
             $responses["$rootPath/people"]=['people'=>$people];
             if (class_exists('MealPlanService')) {
                 $plans=new MealPlanService($this->pdo,$this->households,$this->mediaUrl);
